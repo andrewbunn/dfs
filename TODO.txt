@@ -1,0 +1,9 @@
+TODO:
+
+repository
+
+streamline process
+
+data collection / analysis (keep all data leading to lineup generation)
+
+automating generating more lineups
