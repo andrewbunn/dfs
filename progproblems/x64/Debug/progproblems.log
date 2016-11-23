@@ -1,0 +1,23 @@
+﻿cl : Command line warning D9002: ignoring unknown option '/arch:SSE2'
+  main.cpp
+main.cpp(49): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(192): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(440): warning C4267: 'argument' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(615): warning C4267: 'argument' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(624): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(691): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(772): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(803): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(839): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(842): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(954): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(990): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(1108): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(1112): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(1138): warning C4267: 'initializing' : conversion from 'size_t' to 'int', possible loss of data
+main.cpp(1620): warning C4554: '&' : check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(1659): warning C4554: '&' : check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(1699): warning C4554: '&' : check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(1867): warning C4244: 'initializing' : conversion from '__int64' to 'int', possible loss of data
+c:\users\andrewbunn\documents\visual studio 2013\projects\progproblems\progproblems\main.cpp(1014): warning C4715: 'search' : not all control paths return a value
+  progproblems.vcxproj -> C:\Users\andrewbunn\documents\visual studio 2013\Projects\progproblems\x64\Debug\progproblems.exe
