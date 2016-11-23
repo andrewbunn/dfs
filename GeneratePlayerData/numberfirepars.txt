@@ -1,0 +1,15 @@
+Player struct:
+- name
+- position
+- salary
+- projection
+
+-> Name, Position, Salary all come from Yahoo <https://dfyql-ro.sports.yahoo.com/v2/external/playersFeed/nfl>
+
+-> Projections come from numberfire <http://www.numberfire.com/nfl/daily-fantasy/daily-football-projections>
+** Path to Numbers **
+- Name
+  -> tbody tr ('data-player-id' to match to projection)
+  -> tbody tr .team-player .player-info .full (value) gives the fill player name
+- Projection (use previously stored data-player-id)
+  -> tbody tr ('data-player-id) td .fp.active (value) gives us the projection for the player

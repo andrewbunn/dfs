@@ -1,0 +1,11 @@
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\GeneratePlayerData.exe.config
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\GeneratePlayerData.exe
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\GeneratePlayerData.pdb
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\Newtonsoft.Json.dll
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\Newtonsoft.Json.xml
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.csprojResolveAssemblyReference.cache
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.exe
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.pdb
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\HtmlAgilityPack.dll
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\HtmlAgilityPack.pdb
+C:\Users\tjensen\Documents\tjdfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\HtmlAgilityPack.xml
