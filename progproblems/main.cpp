@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <chrono>
 #include <ppl.h>
+#include <numeric>
 
 // number of lineups to generate in optimizen - TODO make parameter
 #define LINEUPCOUNT 2000
@@ -862,11 +863,13 @@ void importProjections(string fileout, bool tweaked, bool tweakAndDiff)
 // use some backdata to calculate lineup score -> prize winnings
 // average prize winnings over all simulations to determine EV of that lineup set
 
-inline float generateScore(uint8_t player, vector<PlayerSim>& allPlayers, default_random_engine& generator)
+inline float generateScore(uint8_t player, const vector<PlayerSim>& allPlayers, default_random_engine& generator)
 {
-    PlayerSim& p = allPlayers[player];
+    const PlayerSim& p = allPlayers[player];
     // need to research what std dev should be
-    return p.distribution(generator);
+    //return p.distribution(generator);
+    normal_distribution<float> distribution(p.proj, 6.0f);
+    return distribution(generator);
 }
 
 // cutoffs is sorted array of the average score for each prize cutoff
@@ -939,18 +942,17 @@ inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, ve
 // customized deviations
 // account for contest types/costs/prizes
 // estimate thresholds specific to a given week? (how much obvious value is out there?)
-float runSimulation(vector<vector<uint8_t>>& lineups, vector<PlayerSim>& allPlayers,
-    default_random_engine& generator
-    /*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/
-)
+float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerSim>& allPlayers)
 {
     float winningsTotal = 0.f;
     float runningAvg = 0.f;
     bool converged = false;
-    // vector of all players in all lineups
-    // is it faster to create vector here or just create map of scores lazily from full map of players?
-    for (int i = 0; i < SIMULATION_COUNT; i++)
+    static vector<float> simulationResults(SIMULATION_COUNT);
+    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers](const float&)
     {
+        static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+        static thread_local mt19937 generatorTh(seed1);
+
         // only 64 players considered? need universal index
         // map of index -> score
         array<float, 64> playerScores = {};
@@ -964,15 +966,15 @@ float runSimulation(vector<vector<uint8_t>>& lineups, vector<PlayerSim>& allPlay
             {
                 if (playerScores[player] == 0)
                 {
-                    playerScores[player] = generateScore(player, allPlayers, generator);
+                    playerScores[player] = generateScore(player, allPlayers, generatorTh);
                 }
                 lineupScore += playerScores[player];
             }
             // lookup score -> winnings
             winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/);
         }
-        winningsTotal += winnings;
-
+        // winningsTotal += winnings;
+        return winnings;
         // dbg:
         /*
         float currentAvg = winningsTotal / (i + 1);
@@ -996,7 +998,9 @@ float runSimulation(vector<vector<uint8_t>>& lineups, vector<PlayerSim>& allPlay
         }
         runningAvg = currentAvg;
         */
-    }
+    });
+
+    winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
 
     float expectedValue = winningsTotal / SIMULATION_COUNT;
     return expectedValue;
@@ -1054,7 +1058,7 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
-        float value = runSimulation(set, allPlayers, generator);
+        float value = runSimulation(set, allPlayers);
         if (value > bestValue)
         {
             bestValue = value;
@@ -1073,8 +1077,8 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     {
         for (auto& x : lineup)
         {
-                myfile << p[x].name;
-                myfile << ",";
+            myfile << p[x].name;
+            myfile << ",";
         }
         myfile << endl;
     }
