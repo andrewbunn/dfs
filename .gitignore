@@ -6,6 +6,8 @@
 *.iobj
 *.ipdb
 *.pgd
+*.obj
+*.tlog
 
 # csv in progproblems #
 progproblems/*.csv

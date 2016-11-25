@@ -20,6 +20,15 @@
 #include <chrono>
 #include <ppl.h>
 
+// number of lineups to generate in optimizen - TODO make paramater
+#define LINEUPCOUNT 2000
+// number of simulations to run of a set of lineups to determine expected value
+#define SIMULATION_COUNT 500
+// number of random lineup sets to select
+#define RANDOM_SET_COUNT 10000
+// number of lineups we want to select from total pool
+#define TARGET_LINEUP_COUNT 50
+
 using namespace concurrency;
 using namespace std;
 
@@ -48,6 +57,18 @@ using namespace std;
         {
             //val = proj / (float)cost;
         }
+    };
+
+    struct PlayerSim : public Player
+    {
+        float stdDev;
+        normal_distribution<float> distribution;
+
+        PlayerSim(string s, uint8_t c, float p, uint8_t pos, uint8_t idx, float sd)
+            : Player(s, c, p, pos, idx), stdDev(sd), distribution(p, sd) {}
+
+        PlayerSim(Player p, float sd)
+            : Player(p), stdDev(sd), distribution(p.proj, sd) {}
     };
 
     struct Players {
@@ -197,6 +218,47 @@ using namespace std;
             if (tokens.size() == 4)
             {
                 result.emplace_back(tokens[0], c, p, pos, count++);
+            }
+            tokens = getNextLineAndSplitIntoTokens(file);
+        }
+
+        return result;
+    }
+
+    // for now just parse player names like output.csv current does, could make format easier to parse
+    vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint8_t>& playerIndices)
+    {
+        vector<vector<uint8_t>> result;
+        ifstream       file(filename);
+        vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+        vector<uint8_t> current;
+
+        while (tokens.size() == 1)
+        {
+            if (tokens[0].size() > 0)
+            {
+                if (isalpha(tokens[0][0]))
+                {
+                    auto it = playerIndices.find(tokens[0]);
+                    if (it != playerIndices.end())
+                    {
+                        current.push_back(it->second);
+                    }
+                    else
+                    {
+                        throw invalid_argument("Invalid player: " + tokens[0]);
+                    }
+                }
+                else
+                {
+                    // value/cost number, signifies end of lineup.
+                    // duration at start of file
+                    if (current.size() > 0)
+                    {
+                        result.push_back(current);
+                        current.clear();
+                    }
+                }
             }
             tokens = getNextLineAndSplitIntoTokens(file);
         }
@@ -354,7 +416,6 @@ using namespace std;
 
     typedef vector<Players2> lineup_list;
 
-#define LINEUPCOUNT 10
 
 
     // can transpose players of same type
@@ -599,8 +660,6 @@ using namespace std;
                 myfile << endl;
                 myfile << totalcost;
                 myfile << endl;
-                myfile << endl;
-
             }
 
             myfile.close();
@@ -888,10 +947,247 @@ using namespace std;
         myfile.close();
     }
 
+    // monte carlo simulations
+    // input: list of lineups (output of optimizen?)
+    // players projections, std dev? (normal_distribution)
+    // for a simulation we select a subset of lineups
+    // run N simulations:
+    // randomly generate score for all involved players, then determine total prize winnings based on scores of each lineup
+    // use some backdata to calculate lineup score -> prize winnings
+    // average prize winnings over all simulations to determine EV of that lineup set
+
+    // take in <random> stuff
+    inline float generateScore(uint8_t player, vector<PlayerSim>& allPlayers, default_random_engine& generator)
+    {
+        // lookup(player)
+        //
+        PlayerSim& p = allPlayers[player];
+        // this should be in players array:
+        // need to research what std dev should be
+        //normal_distribution<float> distribution(p.proj, 2.0);
+        return p.distribution(generator);
+    }
+
+    // cutoffs is sorted array of the average score for each prize cutoff
+    // alternatively we can do regression to have function of value -> winnings
+    inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/)
+    {
+        static array<int, 22> winnings = {
+            10000,
+            5000,
+            3000,
+            2000,
+            1000,
+            750,
+            500,
+            400,
+            300,
+            200,
+            150,
+            100,
+            75,
+            60,
+            50,
+            45,
+            40,
+            35,
+            30,
+            25,
+            20,
+            15
+        };
+
+        static array<float, 22> cutoffs = {
+            181.14,
+            179.58,
+            173.4,
+            172.8,
+            171.14,
+            168.7,
+            167,
+            165.1,
+            162.78,
+            160,
+            158.68,
+            156.3,
+            154.2,
+            151.64,
+            149.94,
+            147.18,
+            142.4,
+            138.18,
+            135.1,
+            130.24,
+            126.34,
+            121.3
+        };
+        // binary search array of cutoffs
+        auto it = lower_bound(cutoffs.begin(), cutoffs.end(), score, greater<float>());
+        float value;
+        if (it != cutoffs.end())
+        {
+            value = static_cast<float>(winnings[it - cutoffs.begin()]);
+        }
+        else
+        {
+            value = 0;
+        }
+        return value;
+    }
+    // ideas for improvements:
+    // customized deviations
+    // 
+    float runSimulation(vector<vector<uint8_t>>& lineups, vector<PlayerSim>& allPlayers,
+        default_random_engine& generator
+        /*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/
+    )
+    {
+        float winningsTotal = 0.f;
+        float runningAvg = 0.f;
+        bool converged = false;
+        // vector of all players in all lineups
+        // is it faster to create vector here or just create map of scores lazily from full map of players?
+        for (int i = 0; i < SIMULATION_COUNT; i++)
+        {
+            // only 64 players considered? need universal index
+            // map of index -> score
+            array<float, 64> playerScores = {};
+            // create map of player -> generated score
+            // for each lineup -> calculate score
+            float winnings = 0.f;
+            for (auto& lineup : lineups)
+            {
+                float lineupScore = 0.f;
+                for (auto& player : lineup)
+                {
+                    if (playerScores[player] == 0)
+                    {
+                        playerScores[player] = generateScore(player, allPlayers, generator);
+                    }
+                    lineupScore += playerScores[player];
+                }
+                // lookup score -> winnings
+                winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/);
+            }
+            winningsTotal += winnings;
+
+            // dbg:
+            /*
+            float currentAvg = winningsTotal / (i + 1);
+            if (abs(currentAvg - runningAvg) < 20)
+            {
+                if (!converged)
+                {
+                    cout << i;
+                }
+                //break;
+                converged = true;
+            }
+            else
+            {
+                if (converged)
+                {
+                    cout << "not ready";
+                    cout << i;
+                }
+                converged = false;
+            }
+            runningAvg = currentAvg;
+            */
+        }
+
+        float expectedValue = winningsTotal / SIMULATION_COUNT;
+        return expectedValue;
+    }
+
+
+    // Reservoir sampling algo
+    inline vector<vector<uint8_t>> getRandomSet(const vector<vector<uint8_t>>& starterSet, const vector<vector<uint8_t>>& allLineups, default_random_engine& generator)
+    {
+        vector<vector<uint8_t>> set = starterSet;
+        // replace elements with gradually decreasing probability
+        //for i = k + 1 to n
+        //    j : = random(1, i)   // important: inclusive range
+        //    if j <= k
+        //        R[j] : = S[i]
+
+        for (int i = TARGET_LINEUP_COUNT; i < allLineups.size(); i++)
+        {
+            uniform_int_distribution<int> distribution(0, i);
+            int j = distribution(generator);
+            if (j < TARGET_LINEUP_COUNT)
+            {
+                set[j] = allLineups[i];
+            }
+        }
+
+        return set;
+    }
+
+    void lineupSelector(const string lineupsFile, const string playersFile)
+    {
+        vector<Player> p = parsePlayers(playersFile);
+        vector<PlayerSim> allPlayers;
+        // create map of player -> index for lineup parser
+        unordered_map<string, uint8_t> playerIndices;
+        // for now just use same std dev
+        for (auto& x : p)
+        {
+            allPlayers.emplace_back(x, 6.f);
+            playerIndices.emplace(x.name, x.index);
+        }
+
+        unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+
+        default_random_engine generator(seed1);
+        vector<vector<uint8_t>> allLineups = parseLineups(lineupsFile, playerIndices);
+
+        // starterSet is just the first N lineups from all lineups which is the initialization of reservoir algorithm
+        vector<vector<uint8_t>> starterSet;
+        for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
+        {
+            starterSet.push_back(allLineups[i]);
+        }
+        // get players
+        // get all possible lineups
+        // choose set
+        //for (auto& set : sets)
+        // do random for now, randomly select set then run simulation
+        float bestValue = 0.f;
+        vector<vector<uint8_t>> bestSet;
+        for (int i = 0; i < RANDOM_SET_COUNT; i++)
+        {
+            vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
+            float value = runSimulation(set, allPlayers, generator);
+            if (value > bestValue)
+            {
+                bestValue = value;
+                bestSet = set;
+                cout << bestValue << endl;
+            }
+        }
+
+        // output bestset
+
+        ofstream myfile;
+        myfile.open("outputset.csv");
+
+        myfile << bestValue;
+        myfile << endl;
+        for (auto& lineup : bestSet)
+        {
+            for (auto& x : lineup)
+            {
+                    myfile << p[x].name;
+                    myfile << ",";
+            }
+            myfile << endl;
+        }
+
+        myfile.close();
+    }
 
 int main(int argc, char* argv[]) {
-    // for toggling lineups, we can assign "risk" to lower value plays
-    // ie. quiz/gil are highest value, so less likely to toggle
     // TODO:
     // make program properly usable via cmd line (optimize x y) (import x ) so we dont run from vs all the time
     // generate x lineups
@@ -962,6 +1258,29 @@ int main(int argc, char* argv[]) {
                 fileout = "players.csv";
             }
             importProjections(fileout, false, false);
+        }
+
+        if (strcmp(argv[1], "lineupselect") == 0)
+        {
+            string filein, fileout;
+            if (argc > 2)
+            {
+                filein = argv[2];
+            }
+            else
+            {
+                filein = "output.csv";
+            }
+
+            if (argc > 3)
+            {
+                fileout = argv[3];
+            }
+            else
+            {
+                fileout = "players.csv";
+            }
+            lineupSelector(filein, fileout);
         }
     }
     return 0;

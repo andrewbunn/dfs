@@ -1,9 +1,11 @@
 TODO:
 
-repository - DONE
-
 streamline process
 
 data collection / analysis (keep all data leading to lineup generation)
 
 automating generating more lineups
+
+simulation project for lineup distribution
+
+data collection for simulation: std deviations, score -> winnings history

@@ -1,14 +1,15 @@
 ﻿cl : Command line warning D9002: ignoring unknown option '/arch:SSE2'
   main.cpp
-main.cpp(394): warning C4244: 'argument': conversion from '__int64' to 'int', possible loss of data
-main.cpp(509): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-main.cpp(548): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-main.cpp(588): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
-main.cpp(756): warning C4244: 'initializing': conversion from '__int64' to 'int', possible loss of data
+main.cpp(455): warning C4244: 'argument': conversion from '__int64' to 'int', possible loss of data
+main.cpp(570): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(609): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(649): warning C4554: '&': check operator precedence for possible error; use parentheses to clarify precedence
+main.cpp(815): warning C4244: 'initializing': conversion from '__int64' to 'int', possible loss of data
+main.cpp(1140): warning C4244: 'initializing': conversion from 'std::chrono::system_clock::rep' to 'unsigned int', possible loss of data
   Generating code
-  24 of 1568 functions ( 1.5%) were compiled, the rest were copied from previous compilation.
+  31 of 2188 functions ( 1.4%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    9 functions had inline decision re-evaluated but remain unchanged
+    12 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   progproblems.vcxproj -> C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\x64\Release\progproblems.exe
   progproblems.vcxproj -> C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\x64\Release\progproblems.pdb (Full PDB)
