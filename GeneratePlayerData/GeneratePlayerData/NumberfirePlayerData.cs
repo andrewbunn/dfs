@@ -10,5 +10,14 @@ namespace GeneratePlayerData
     {
         public string Name { get; set; }
         public decimal Projection { get; set; }
+        public string Position { get; set; }
+
+        public PositionEnum PositionEnum
+        {
+            get
+            {
+                return (PositionEnum)Enum.Parse(typeof(PositionEnum), this.Position.ToLower());
+            }
+        }
     }
 }

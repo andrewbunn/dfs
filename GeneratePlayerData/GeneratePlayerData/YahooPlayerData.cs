@@ -7,6 +7,15 @@ using System.Threading.Tasks;
 
 namespace GeneratePlayerData
 {
+    public enum PositionEnum
+    {
+        qb = 0,
+        rb = 1,
+        wr = 2,
+        te = 3,
+        def = 4
+    };
+
     public class YahooPlayerData
     {
         [JsonProperty("sport")]
@@ -20,6 +29,15 @@ namespace GeneratePlayerData
 
         [JsonProperty("position")]
         public string Position { get; set; }
+
+        [JsonIgnore]
+        public PositionEnum PositionEnum
+        {
+            get
+            {
+                return (PositionEnum)Enum.Parse(typeof(PositionEnum), this.Position.ToLower());
+            }
+        }
 
         [JsonProperty("team")]
         public string Team { get; set; }
