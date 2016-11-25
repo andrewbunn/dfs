@@ -8,9 +8,19 @@
 *.pgd
 *.obj
 *.tlog
+*.opendb
 
 # csv in progproblems #
 progproblems/*.csv
+
+Release/*
+Debug/*
+x64/*
+progproblems/Debug/*
+progproblems/Release/*
+progproblems/x64/*
+GeneratePlayerData/GeneratePlayerData/bin/*
+
 
 
 # OS gen #
