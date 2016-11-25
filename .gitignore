@@ -8,7 +8,6 @@
 *.pgd
 *.obj
 *.tlog
-*.opendb
 
 # csv in progproblems #
 progproblems/*.csv

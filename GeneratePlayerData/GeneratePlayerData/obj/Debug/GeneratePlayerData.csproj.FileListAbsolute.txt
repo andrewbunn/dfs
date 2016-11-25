@@ -1,0 +1,3 @@
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\GeneratePlayerData.exe.config
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.exe
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.pdb

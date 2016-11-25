@@ -942,6 +942,23 @@ inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, ve
 // customized deviations
 // account for contest types/costs/prizes
 // estimate thresholds specific to a given week? (how much obvious value is out there?)
+//
+// So we generate large chunk of lineups using one set of player limitations/projections
+// then generate other sets, how do we incorporate those together?
+// we could enforce % of lineups selected from each of those sets but how they would get selected/weighted ultimately depends
+// on projections we use in simulation
+// essentially, I want to somehow indicate that i want to significantly limit exposure to some players (eg. marshall)
+// so lets say marshall is ~10% target. marshall allowed lineups are chosen 10% of time in set selection! done
+// so we do our lineup generation in similar process to what we always did, but rather than just getting one lineup, we generate tons, and use those for simulation
+// and enforce our "asset mix"
+// then we need more data to drive our "asset mix"
+//
+// then in simulation, we can track things like variance of a set as well and select "best mix" based on more than just EV.
+//
+// other ways to improve: estimate cutoffs more accurately for a given week based on ownership? and then the random values we generate for a simulation affect those lines based on ownership
+// 
+//
+
 float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerSim>& allPlayers)
 {
     float winningsTotal = 0.f;
@@ -973,31 +990,7 @@ float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerS
             // lookup score -> winnings
             winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/);
         }
-        // winningsTotal += winnings;
         return winnings;
-        // dbg:
-        /*
-        float currentAvg = winningsTotal / (i + 1);
-        if (abs(currentAvg - runningAvg) < 20)
-        {
-            if (!converged)
-            {
-                cout << i;
-            }
-            //break;
-            converged = true;
-        }
-        else
-        {
-            if (converged)
-            {
-                cout << "not ready";
-                cout << i;
-            }
-            converged = false;
-        }
-        runningAvg = currentAvg;
-        */
     });
 
     winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
