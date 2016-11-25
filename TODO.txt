@@ -9,3 +9,12 @@ automating generating more lineups
 simulation project for lineup distribution
 
 data collection for simulation: std deviations, score -> winnings history
+
+possible data sites to look into:
+https://empeopled.com/p/96108 (reddit def)
+https://github.com/BurntSushi/nfldb (nfldb python)
+http://www.pro-football-reference.com/
+http://rotoguru1.com/cgi-bin/fyday.pl?game=fd
+
+I have to read this:
+https://arxiv.org/pdf/1604.01455v2.pdf
