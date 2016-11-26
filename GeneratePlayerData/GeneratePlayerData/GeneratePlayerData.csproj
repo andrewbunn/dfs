@@ -51,7 +51,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="NumberfirePlayerData.cs" />
+    <Compile Include="EmpeopledBlogPostResponse.cs" />
+    <Compile Include="PlayerProjectionData.cs" />
     <Compile Include="PlayerProjectionAlteration.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

@@ -15,9 +15,16 @@ namespace GeneratePlayerData
     class Program
     {
         private const string YAHOO_PLAYER_DATA_URI = "https://dfyql-ro.sports.yahoo.com/v2/external/playersFeed/nfl";
-        private const string PROJECTIONS_DATA_URI = "http://www.numberfire.com/nfl/daily-fantasy/daily-football-projections";
+        private const string NUMBERFIRE_PROJECTIONS_DATA_URI = "http://www.numberfire.com/nfl/daily-fantasy/daily-football-projections";
+        private const string REDDIT_BASE_URI = "https://www.reddit.com";
+        private const string REDDIT_DEFENSE_URI = "/user/quickonthedrawl/submitted/";
+        private const string EMPEOPLED_POST_URI = "https://empeopled.com/discussion?object_type=share&object_id={0}&comment_id=";
 
-        static void Main(string[] args)
+        private const int BASE_DEFENSE_BLOG_PROJ = 5;
+        private const decimal BLOG_DEFENSE_WEIGHT = .5M;
+        private const decimal NUMBERFIRE_DEFENSE_WEIGHT = .5M;
+
+        static void Main(string[] args) 
         {
             bool includeThursdayGames = args.Length > 0 ? Convert.ToBoolean(args[0]) : true;
             string diffFilePath = args.Length > 1 ? args[1] : "";
@@ -30,7 +37,7 @@ namespace GeneratePlayerData
         public static async Task GatherAndGeneratePlayerFile(bool includeThursdayGames, string diffFilePath)
         {
             var yahooPlayerData = FetchYahooPlayerData();
-            var projectionsData = FetchNumberfireProjectionsData();
+            var projectionsData = FetchProjectionsData();
 
             await Task.WhenAll(yahooPlayerData, projectionsData);
             await MergeDataAndOutputResults(
@@ -54,33 +61,65 @@ namespace GeneratePlayerData
             return jsonResult.Result.Players;
         }
 
-        public static async Task<IEnumerable<NumberfirePlayerData>> FetchNumberfireProjectionsData()
+        public static async Task<IEnumerable<PlayerProjectionData>> FetchProjectionsData()
         {
+            // Gather information from Numberfire tables
             HttpClient client = new HttpClient();
-            var playerResponse = await client.GetAsync(PROJECTIONS_DATA_URI);
+
+            var playerResponse = await client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI);
             var playerResult = await playerResponse.Content.ReadAsStringAsync();
-            var defenseResponse = await client.GetAsync(PROJECTIONS_DATA_URI + "/D");
-            var defenseResult = await defenseResponse.Content.ReadAsStringAsync();
             HtmlDocument playerDoc = new HtmlDocument();
             playerDoc.LoadHtml(playerResult);
-            HtmlDocument defenseDoc = new HtmlDocument();
-            defenseDoc.LoadHtml(defenseResult);
-
-            // Find the two correct tables, both are the only tbodys with children on the page.
             IEnumerable<HtmlNode> tableNodes = playerDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
-            IEnumerable<HtmlNode> defenseTableNodes = defenseDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
 
-            // Iterate through the two tables constructing the player objects.
+            var nfDefenseResponse = await client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI + "/D");
+            var nfDefenseResult = await nfDefenseResponse.Content.ReadAsStringAsync();
+            HtmlDocument nfDefenseDoc = new HtmlDocument();
+            nfDefenseDoc.LoadHtml(nfDefenseResult);
+            IEnumerable<HtmlNode> nfDefenseTableNodes = nfDefenseDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
+
+            // For reddit projections we have to go down the following pattern:
+            // 1. Find the reddit post
+            // 2. Fetch the post, find the link to the blog post
+            // 3. Go to the blog post & fetch projection data
+            // ** (1) **
+            var redditUserHistoryResponse = await client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI);
+            var redditUserHistoryResult = await redditUserHistoryResponse.Content.ReadAsStringAsync();
+            HtmlDocument userHistoryDoc = new HtmlDocument();
+            userHistoryDoc.LoadHtml(redditUserHistoryResult);
+            var topPost = userHistoryDoc.DocumentNode.SelectSingleNode("//div[contains(@id,'siteTable')]/div[contains(@class,'thing')]");
+            var topPostUrl = REDDIT_BASE_URI + topPost.Attributes["data-url"].Value;
+
+            // ** (2) **
+            var redditPostResponse = await client.GetAsync(topPostUrl);
+            var redditPostResult = await redditPostResponse.Content.ReadAsStringAsync();
+            HtmlDocument redditPostDoc = new HtmlDocument();
+            redditPostDoc.LoadHtml(redditPostResult);
+            var blogPost = redditPostDoc.DocumentNode.SelectSingleNode(
+                "//a[contains(@href,'empeopled') and contains(.,'Defense Wins Championships')] ");
+            var blogPostUrl = blogPost.Attributes["href"].Value;
+            var blogPostId = blogPostUrl.Split('/').Last();
+
+            // ** (3) **
+            var blogPostResponse = await client.GetAsync(string.Format(EMPEOPLED_POST_URI, blogPostId));
+            var blogPostResult = await blogPostResponse.Content.ReadAsStringAsync();
+            var blogData = JsonConvert.DeserializeObject<EmpeopledBlogPostResponse>(blogPostResult);
+            HtmlDocument blogPostDoc = new HtmlDocument();
+            blogPostDoc.LoadHtml(blogData.Data.Content.Body);
+            var blogDefenseNodes = blogPostDoc.DocumentNode.SelectNodes("//ol/li");
+
+            // Zip the data together and return
             var playerInfo = tableNodes.ElementAt(0).Descendants("tr");
             var projectionsInfo = tableNodes.ElementAt(1).Descendants("tr");
             var zippedInfo = playerInfo.Zip(projectionsInfo, (info, proj) => new { info, proj});
 
-            var defenseInfo = defenseTableNodes.ElementAt(0).Descendants("tr");
-            var defenseProjectionInfo = defenseTableNodes.ElementAt(1).Descendants("tr");
-            var zippedDefenseInfo = defenseInfo.Zip(defenseProjectionInfo, (info, proj) => new { info, proj });
-            zippedInfo = zippedInfo.Concat(zippedDefenseInfo);
+            var nfDefenseInfo = nfDefenseTableNodes.ElementAt(0).Descendants("tr");
+            var nfDefenseProjectionInfo = nfDefenseTableNodes.ElementAt(1).Descendants("tr");
+            var zippedNfDefenseInfo = nfDefenseInfo.Zip(nfDefenseProjectionInfo, (info, proj) => new { info, proj });
+            zippedInfo = zippedInfo.Concat(zippedNfDefenseInfo);
 
-            List<NumberfirePlayerData> playerData = new List<NumberfirePlayerData>();
+            List<PlayerProjectionData> playerData = new List<PlayerProjectionData>();
+            List<PlayerProjectionData> defenseData = new List<PlayerProjectionData>();
             foreach(var playerRow in zippedInfo)
             {
                 // If our rows somehow become unaligned throw an exception
@@ -98,19 +137,51 @@ namespace GeneratePlayerData
                 var positionText = position != null ? position.InnerText.Trim() : "def";
                 var projectionText = projection != null ? projection.InnerText.Trim() : "0";
 
-                playerData.Add(new NumberfirePlayerData()
+                var playerProjectionData = new PlayerProjectionData()
                 {
                     Name = NormalizeName(playerNameText),
                     Projection = Convert.ToDecimal(projectionText),
                     Position = positionText
+                };
+                if (positionText == "def")
+                    defenseData.Add(playerProjectionData);
+                else
+                    playerData.Add(playerProjectionData);
+            }
+
+            // Now translate the defense data from the blog post and merge with the existing defense information
+            List<PlayerProjectionData> blogDefenseData = new List<PlayerProjectionData>();
+            foreach(var blogDefenseRow in blogDefenseNodes)
+            {
+                var splitRow = blogDefenseRow.InnerText.Split(',');
+                var cityName = splitRow[0].Trim();
+                var splitProj = splitRow[1].Split('–');
+                var projection = splitProj[0].Trim();
+                blogDefenseData.Add(new PlayerProjectionData()
+                {
+                    Name = NormalizeName(cityName),
+                    Projection = Convert.ToDecimal(projection),
+                    Position = "def"
                 });
             }
+
+            // Foreach existing defense see if there is a blog post corresponding, if not use the base.
+            foreach(var defense in defenseData)
+            {
+                var blogMatch = blogDefenseData.Where(b => b.Name == defense.Name).FirstOrDefault();
+                if (blogMatch != null)
+                    defense.Projection = (blogMatch.Projection * BLOG_DEFENSE_WEIGHT) + (defense.Projection * NUMBERFIRE_DEFENSE_WEIGHT);
+                else
+                    defense.Projection = (BASE_DEFENSE_BLOG_PROJ * BLOG_DEFENSE_WEIGHT) + (defense.Projection * NUMBERFIRE_DEFENSE_WEIGHT);
+            }
+            playerData.AddRange(defenseData);
+            
             return playerData;
         }
 
         public static async Task MergeDataAndOutputResults(
             IEnumerable<YahooPlayerData> yahooPlayerData,
-            IEnumerable<NumberfirePlayerData> numberfireData,
+            IEnumerable<PlayerProjectionData> projectionData,
             bool includeThursdayPlayers,
             string diffFilePath)
         {
@@ -139,7 +210,7 @@ namespace GeneratePlayerData
                     foreach (var player in yahooPlayerData)
                     {
                         // For some reason numberfire has missing position data so in those cases, just match based on name
-                        var matchingPlayer = numberfireData.Where(
+                        var matchingPlayer = projectionData.Where(
                             n => n.Name == player.Name && 
                             (!string.IsNullOrEmpty(n.Position) ? 
                             n.PositionEnum == player.PositionEnum : true)).FirstOrDefault();
