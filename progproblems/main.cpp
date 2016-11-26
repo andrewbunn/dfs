@@ -22,7 +22,7 @@
 #include <numeric>
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 2000
+#define LINEUPCOUNT 100
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 500
 // number of random lineup sets to select
@@ -54,6 +54,8 @@ struct Player {
     uint8_t index;
     Player(string s, uint8_t c, float p, uint8_t pos, uint8_t idx) : name(s), cost(c), proj(p), pos(pos), index(idx)
     {}
+
+    Player() {}
 };
 
 struct PlayerSim : public Player
@@ -326,8 +328,13 @@ typedef vector<Players2> lineup_list;
 
 
 // can transpose players of same type
-lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos)
+lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
 {
+    if (skipPositionSet != 0 && (skipPositionSet & (1 << pos)) != 0)
+    {
+        skipPositionSet &= ~(1 << pos);
+        pos++;
+    }
     if (pos >= 9)
     {
         return lineup_list(1, oldLineup);
@@ -359,7 +366,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
         {
             if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
             {
-                return knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? (&p - &players[pos][0]) + 1 : 0, isWR ? (&p - &players[pos][0]) + 1 : 0);
+                return knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? (&p - &players[pos][0]) + 1 : 0, isWR ? (&p - &players[pos][0]) + 1 : 0, skipPositionSet);
             }
         }
 
@@ -367,7 +374,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     };
     if (pos <= 2)
     {
-        vector<lineup_list> lineupResults(players[pos].size());
+        vector<lineup_list> lineupResults(players[pos].size() - startPos);
         parallel_transform(begin(players[pos]) + startPos, end(players[pos]), begin(lineupResults), loop);
 
         lineup_list merged;
@@ -389,7 +396,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     {
         lineup_list bestLineups;
         bestLineups.reserve(2 * LINEUPCOUNT);
-
+        bestLineups.push_back(oldLineup);
         for (int i = startPos; i < players[pos].size(); i++)
         {
             const Player& p = players[pos][i];
@@ -405,7 +412,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
                     }
                     else
                     {
-                        lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : 0, isWR ? i + 1 : 0);
+                        lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : 0, isWR ? i + 1 : 0, skipPositionSet);
                         bestLineups.insert(bestLineups.end(), lineups.begin(), lineups.end());
                     }
                     sort(bestLineups.begin(), bestLineups.end());
@@ -443,56 +450,91 @@ Players2 generateLineup(vector<Player>& p)
     return knapsackPositions(100, 0, Players2(), playersByPos);
 }
 
-lineup_list generateLineupN(vector<Player>& p)
+lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, double& msTime)
 {
+    auto start = chrono::steady_clock::now();
     vector<vector<Player>> playersByPos(9);
     for (int i = 0; i < 9; i++)
     {
         for (auto& pl : p)
         {
-            if (pl.pos == slots[i])
+            auto it = find(disallowedPlayers.begin(), disallowedPlayers.end(), pl.name);
+            if (it == disallowedPlayers.end())
             {
-                playersByPos[i].push_back(pl);
-            }
-            else if (slots[i] == 5 && (pl.pos == 1 || pl.pos == 2 || pl.pos == 3))
-            {
-                playersByPos[i].push_back(pl);
-            }
-        }
-    }
-
-    return knapsackPositionsN(100, 0, Players2(), playersByPos, 0, 0);
-}
-
-vector<int> toggleLowValuePlayers(vector<Player>& p, Players2 lineup)
-{
-    vector<int> result;
-    int totalcost = 0;
-    uint64_t bitset = lineup.bitset;
-    int count = 0;
-    float worstValue = 100.f;
-    int worstValueIndex = 0;
-    for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
-    {
-        if (bitset & 1 == 1)
-        {
-            count++;
-            //result.push_back(p[i]);
-            if (p[i].cost > 0)
-            {
-                float value = p[i].proj / p[i].cost;
-                if (value < worstValue)
+                if (pl.pos == slots[i])
                 {
-                    worstValue = value;
-                    worstValueIndex = i;
+                    playersByPos[i].push_back(pl);
+                }
+                else if (slots[i] == 5 && (pl.pos == 1 || pl.pos == 2 || pl.pos == 3))
+                {
+                    playersByPos[i].push_back(pl);
                 }
             }
         }
-        bitset = bitset >> 1;
     }
 
-    result.push_back(worstValueIndex);
-    return result;
+    // skip positions
+    // 2^9 int to 
+    int skipPositionsSet = 0;
+    if (currentPlayers.totalCount > 0)
+    {
+        for (int i = 0; i < currentPlayers.posCounts.size(); i++)
+        {
+            int count = currentPlayers.posCounts[i];
+            if (count > 0)
+            {
+                if (i == 0)
+                {
+                    skipPositionsSet |= 1;
+                }
+                else if (i == 1)
+                {
+                    skipPositionsSet |= 2;
+                    if (count > 1)
+                    {
+                        skipPositionsSet |= 4;
+                        if (count > 2)
+                        {
+                            // flex
+                            skipPositionsSet |= 1 << 7;
+                        }
+                    }
+                }
+                else if (i == 2)
+                {
+                    skipPositionsSet |= 8;
+                    if (count > 1)
+                    {
+                        skipPositionsSet |= 16;
+                        if (count > 2)
+                        {
+                            skipPositionsSet |= 32;
+                            if (count > 3)
+                            {
+                                skipPositionsSet |= 1 << 7;
+                            }
+                        }
+                    }
+                }
+                else if (i == 3)
+                {
+                    skipPositionsSet |= 64;
+                }
+                else if (i == 4)
+                {
+                    skipPositionsSet |= 1 << 8;
+                }
+
+            }
+        }
+    }
+
+    lineup_list output = knapsackPositionsN(100, 0, currentPlayers, playersByPos, 0, 0, skipPositionsSet);
+
+    auto end = chrono::steady_clock::now();
+    auto diff = end - start;
+    msTime = chrono::duration <double, milli>(diff).count();
+    return output;
 }
 
 void runPlayerOptimizer(string filein, string fileout)
@@ -532,44 +574,45 @@ void runPlayerOptimizer(string filein, string fileout)
     myfile.close();
 }
 
+void saveLineupList(vector<Player>& p, lineup_list& lineups, string fileout, double msTime)
+{
+    ofstream myfile;
+    myfile.open(fileout);
+    myfile << msTime << " ms" << endl;
+
+    for (auto lineup : lineups)
+    {
+        int totalcost = 0;
+        uint64_t bitset = lineup.bitset;
+        int count = 0;
+        for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
+        {
+            if (bitset & 1 == 1)
+            {
+                count++;
+                myfile << p[i].name;
+                totalcost += p[i].cost;
+                myfile << endl;
+            }
+            bitset = bitset >> 1;
+        }
+
+        myfile << lineup.value;
+        myfile << endl;
+        myfile << totalcost;
+        myfile << endl;
+    }
+
+    myfile.close();
+}
+
 void runPlayerOptimizerN(string filein, string fileout)
 {
     vector<Player> p = parsePlayers(filein);
-    auto start = chrono::steady_clock::now();
 
-    //Players2 lineup = generateLineup(p);
-    lineup_list lineups = generateLineupN(p);
-    auto end = chrono::steady_clock::now();
-    auto diff = end - start;
-
-        ofstream myfile;
-        myfile.open(fileout);
-        myfile << chrono::duration <double, milli>(diff).count() << " ms" << endl;
-
-        for (auto lineup : lineups)
-        {
-            int totalcost = 0;
-            uint64_t bitset = lineup.bitset;
-            int count = 0;
-            for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
-            {
-                if (bitset & 1 == 1)
-                {
-                    count++;
-                    myfile << p[i].name;
-                    totalcost += p[i].cost;
-                    myfile << endl;
-                }
-                bitset = bitset >> 1;
-            }
-
-            myfile << lineup.value;
-            myfile << endl;
-            myfile << totalcost;
-            myfile << endl;
-        }
-
-        myfile.close();
+    double msTime = 0;
+    lineup_list lineups = generateLineupN(p, vector<string>(), Players2(), msTime);
+    saveLineupList(p, lineups, fileout, msTime);
 }
 
 void normalizeName(string& name)
@@ -594,7 +637,7 @@ void normalizeName(string& name)
     it = find_end(name.begin(), name.end(), jr.begin(), jr.end());
     name.resize(distance(name.begin(), it));
 
-    array<string, 28> dsts = {
+    array<string, 32> dsts = {
         "Baltimore",
             "Houston",
             "Arizona",
@@ -622,7 +665,11 @@ void normalizeName(string& name)
             "Green Bay",
             "Seattle",
             "Tennessee",
-            "Pittsburgh"
+            "Pittsburgh",
+            "Oakland",
+            "Detroit",
+            "Indianapolis",
+            "Buffalo"
     };
 
     for_each(dsts.begin(), dsts.end(), [](string& n) {
@@ -685,6 +732,23 @@ unordered_map<string, float> parseProjections(string filename)
     return result;
 }
 
+vector<pair<string, float>> parseOwnership(string filename)
+{
+    vector<pair<string, float>> result;
+    ifstream       file(filename);
+    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+    int count = 0;
+    // two david johnsons, just only add first value for now, should be fine
+    while (tokens.size() == 2)
+    {
+        float proj = stof(tokens[1]);
+        normalizeName(tokens[0]);
+        result.emplace_back(tokens[0], proj);
+        tokens = getNextLineAndSplitIntoTokens(file);
+    }
+    return result;
+}
+
 vector<string> parseRanks(string filename)
 {
     vector<string> result;
@@ -741,6 +805,127 @@ void tweakProjections(vector<tuple<string, int, float, int>>& positionPlayers, i
         }
     }
 
+}
+
+// needs to be not multiset driven but some other way to express allowed players/forced players
+void ownershipDriver(string playersFile, string ownershipFile)
+{
+    // goal is to "choose" player and output lineups given chosen set
+    // we have list of players where ownership is limited, for each super set of those players, output X lineups
+    // then in simulations, choose sets that match ownership
+
+    vector<Player> p = parsePlayers(playersFile);
+    vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
+    
+    vector<string> targetPlayers(ownership.size());
+    transform(ownership.begin(), ownership.end(), targetPlayers.begin(), [](const pair<const string,float>& it)
+    {
+        return it.first;
+    });
+    
+    int max = (1 << targetPlayers.size());
+
+    // 2^n
+    for (int i = 0; i < max; i++)
+    {
+        // now targetplayers is all players we want to "toggle"
+        vector<string> includedPlayers;
+        vector<string> excludedPlayers;
+        partition_copy(targetPlayers.begin(), targetPlayers.end(), back_inserter(includedPlayers), back_inserter(excludedPlayers), [&i, &targetPlayers](string& player)
+        {
+            int index = &player - &targetPlayers[0];
+            return ((i & (1 << index)) != 0);
+        });
+        Players2 startingLineup;
+        // if we can't add player, go to next round
+        for (auto& pl : includedPlayers)
+        {
+            auto it = find_if(p.begin(), p.end(), [&pl](const Player& p) {
+                return pl == p.name;
+            });
+            if (it != p.end())
+            {
+                startingLineup.tryAddPlayer(it->pos, it->proj, it->index);
+            }
+
+            // output which set we're processing
+            cout << pl << ",";
+        }
+        cout << endl;
+
+        {
+            double msTime = 0;
+            lineup_list lineups = generateLineupN(p, excludedPlayers, startingLineup, msTime);
+
+            ostringstream stream;
+            stream << "output-" << i << ".csv";
+            saveLineupList(p, lineups, stream.str(), msTime);
+        }
+    }
+}
+
+void removeDominatedPlayers(string filein, string fileout)
+{
+    vector<Player> players = parsePlayers(filein);
+    //vector<tuple<string, int, float, int>> playersResult = parseCosts("costs.csv");
+
+    ofstream myfile;
+    myfile.open(fileout);
+    // for a slot, if there is a player cheaper cost but > epsilon score, ignore
+    // no def for now?
+    for (int i = 0; i <= 4; i++)
+    {
+        vector<Player> positionPlayers;
+        copy_if(players.begin(), players.end(), back_inserter(positionPlayers), [i](Player& p) {
+            return (p.pos == i);
+        });
+
+        // sort by value, descending
+        sort(positionPlayers.begin(), positionPlayers.end(), [](Player& a, Player& b) { return a.proj > b.proj; });
+
+        // biggest issue is for rb/wr we dont account for how many we can use.
+        for (int j = 0; j < positionPlayers.size(); j++)
+        {
+            // remove all players with cost > player
+            //auto& p = positionPlayers[j];
+            auto it = remove_if(positionPlayers.begin() + j + 1, positionPlayers.end(), [&](Player& a) {
+
+                // PositionCount
+                static float minValue[5] = { 8, 8, 8, 5, 5 };
+                return a.proj < minValue[i] ||
+                    (count_if(positionPlayers.begin(), positionPlayers.begin() + j + 1, [&](Player& p) {
+                    static float epsilon = 1;
+
+                    // probably want minvalue by pos 8,8,8,5,5?
+                    // probably want a bit more aggression here, if equal cost but ones player dominates the other
+                    // cost > current player && value < current player
+                    int costDiff = (p.cost - a.cost);
+                    float valueDiff = p.proj - a.proj;
+                    bool lessValuable = (valueDiff > epsilon);
+                    bool atLeastAsExpensive = costDiff <= 0;
+                    return (atLeastAsExpensive && lessValuable) ||
+                        costDiff <= -3;
+                }) >= PositionCount[i]);
+            });
+
+            positionPlayers.resize(distance(positionPlayers.begin(), it));
+        }
+
+        for (auto& p : positionPlayers)
+        {
+            myfile << p.name;
+            myfile << ",";
+            myfile << (static_cast<int>(p.cost) + 10 + ((p.pos == 0) ? 10 : 0));
+            myfile << ",";
+            myfile << static_cast<float>(p.proj);
+            myfile << ",";
+            myfile << static_cast<int>(p.pos);
+            myfile << ",";
+
+            myfile << endl;
+        }
+    }
+    myfile.close();
 }
 
 // or calculate?
@@ -1018,6 +1203,105 @@ inline vector<vector<uint8_t>> getRandomSet(const vector<vector<uint8_t>>& start
     return set;
 }
 
+inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& allLineups, vector<pair<string, float>>& ownership, default_random_engine& generator)
+{
+    vector<vector<uint8_t>> set(TARGET_LINEUP_COUNT);
+    // satisfy ownership first then pull from last set
+    // so for marshall pull from marshal sets at random?
+    // easier is just have sets specified in ownership
+    // marshall set, 
+    // for now i can manually do it with output files or something
+    // 
+    int currentIndex = 0;
+    for (int i = 0; i < ownership.size(); i++)
+    {
+        auto & val = ownership[i];
+        int currentTarget = (int)(val.second * TARGET_LINEUP_COUNT);
+        if (i == ownership.size() - 1)
+        {
+            currentTarget = TARGET_LINEUP_COUNT - currentIndex;
+        }
+        auto& targetLineups = allLineups[i];
+        shuffle(targetLineups.begin(), targetLineups.end(), generator);
+        // copy first n
+        copy_n(targetLineups.begin(), currentTarget, set.begin() + currentIndex);
+        currentIndex += currentTarget;
+    }
+    return set;
+}
+
+void lineupSelectorOwnership(const string ownershipFile, const string playersFile)
+{
+    vector<Player> p = parsePlayers(playersFile);
+    vector<PlayerSim> allPlayers;
+    // create map of player -> index for lineup parser
+    unordered_map<string, uint8_t> playerIndices;
+    // for now just use same std dev
+    for (auto& x : p)
+    {
+        allPlayers.emplace_back(x, 6.f);
+        playerIndices.emplace(x.name, x.index);
+    }
+
+    vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
+
+    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    default_random_engine generator(seed1);
+
+    int totalSets = ownership.size();
+
+    vector<vector<vector<uint8_t>>> allLineups(totalSets);
+    for (int i = 0; i < totalSets; i++)
+    {
+        ostringstream stream;
+        stream << "output-" << i << ".csv";
+        allLineups[i] = parseLineups(stream.str(), playerIndices);
+    }
+
+    // randomly pick a set -> if it will fit your requirements, pick a lineup
+    // so we want 10% of some players, remaining % contains none of those players
+    //= parseLineups(lineupsFile, playerIndices);
+
+    // just shuffle and pull from sets
+    // starterSet is just the first N lineups from all lineups which is the initialization of reservoir algorithm
+   
+    // get players
+    // get all possible lineups
+    // choose set
+    // do random for now, randomly select set then run simulation
+    float bestValue = 0.f;
+    vector<vector<uint8_t>> bestSet;
+    for (int i = 0; i < RANDOM_SET_COUNT; i++)
+    {
+        vector<vector<uint8_t>> set = getTargetSet(allLineups, ownership, generator);
+        float value = runSimulation(set, allPlayers);
+        if (value > bestValue)
+        {
+            bestValue = value;
+            bestSet = set;
+            cout << bestValue << endl;
+        }
+    }
+
+    // output bestset
+    ofstream myfile;
+    myfile.open("outputset.csv");
+
+    myfile << bestValue;
+    myfile << endl;
+    for (auto& lineup : bestSet)
+    {
+        for (auto& x : lineup)
+        {
+            myfile << p[x].name;
+            myfile << ",";
+        }
+        myfile << endl;
+    }
+
+    myfile.close();
+}
+
 void lineupSelector(const string lineupsFile, const string playersFile)
 {
     vector<Player> p = parsePlayers(playersFile);
@@ -1154,6 +1438,30 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "lineupselect") == 0)
         {
+            string lineups, players;
+            if (argc > 2)
+            {
+                lineups = argv[2];
+            }
+            else
+            {
+                lineups = "output.csv";
+            }
+
+            if (argc > 3)
+            {
+                players = argv[3];
+            }
+            else
+            {
+                players = "players.csv";
+            }
+            // file pathing is bad in many of these, need to get more files as args.
+            lineupSelector(lineups, players);
+        }
+
+        if (strcmp(argv[1], "dominateplayers") == 0)
+        {
             string filein, fileout;
             if (argc > 2)
             {
@@ -1161,7 +1469,7 @@ int main(int argc, char* argv[]) {
             }
             else
             {
-                filein = "output.csv";
+                filein = "mergedPlayers.csv";
             }
 
             if (argc > 3)
@@ -1172,7 +1480,54 @@ int main(int argc, char* argv[]) {
             {
                 fileout = "players.csv";
             }
-            lineupSelector(filein, fileout);
+            removeDominatedPlayers(filein, fileout);
+        }
+
+        if (strcmp(argv[1], "ownershipgen") == 0)
+        {
+            string playersFile, ownershipFile;
+            if (argc > 2)
+            {
+                playersFile = argv[2];
+            }
+            else
+            {
+                playersFile = "players.csv";
+            }
+
+            if (argc > 3)
+            {
+                ownershipFile = argv[3];
+            }
+            else
+            {
+                ownershipFile = "ownership.csv";
+            }
+            ownershipDriver(playersFile, ownershipFile);
+        }
+
+
+        if (strcmp(argv[1], "lineupselectownership") == 0)
+        {
+            string playersFile, ownershipFile;
+            if (argc > 2)
+            {
+                playersFile = argv[2];
+            }
+            else
+            {
+                playersFile = "players.csv";
+            }
+
+            if (argc > 3)
+            {
+                ownershipFile = argv[3];
+            }
+            else
+            {
+                ownershipFile = "ownership.csv";
+            }
+            lineupSelectorOwnership(ownershipFile, playersFile);
         }
     }
     return 0;
