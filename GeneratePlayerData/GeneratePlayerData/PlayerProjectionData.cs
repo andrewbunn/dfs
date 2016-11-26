@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace GeneratePlayerData
 {
-    public class NumberfirePlayerData
+    public class PlayerProjectionData
     {
         public string Name { get; set; }
         public decimal Projection { get; set; }
