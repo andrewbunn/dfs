@@ -24,9 +24,9 @@
 // number of lineups to generate in optimizen - TODO make parameter
 #define LINEUPCOUNT 100
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 500
+#define SIMULATION_COUNT 1000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 10000
+#define RANDOM_SET_COUNT 100000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 50
 
@@ -795,12 +795,7 @@ void tweakProjections(vector<tuple<string, int, float, int>>& positionPlayers, i
                     float proj = get<2>(positionPlayers[j]);
                     get<2>(positionPlayers[j]) = get<2>(positionPlayers[j - 1]);
                     get<2>(positionPlayers[j - 1]) = proj;
-                    //swap(get<2>(positionPlayers[j], get<2>(positionPlayers[j + 1]);
                 }
-
-                //swap(positionPlayers[j], positionPlayers[j + 1]);
-                //rotate(positionPlayers.begin() + i, it, it + 1);
-                //get<2>(positionPlayers[i]) = proj;
             }
         }
     }
@@ -1057,9 +1052,11 @@ inline float generateScore(uint8_t player, const vector<PlayerSim>& allPlayers, 
     return distribution(generator);
 }
 
+#define CONTENDED_PLACEMENT_SLOTS 14
+
 // cutoffs is sorted array of the average score for each prize cutoff
 // alternatively we can do regression to have function of value -> winnings
-inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/)
+inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_SLOTS>& placements/*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/)
 {
     static array<int, 22> winnings = {
         10000,
@@ -1110,11 +1107,38 @@ inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, ve
         126.34,
         121.3
     };
+    // number of top level placements we can have in each slot
+    static array<uint8_t, CONTENDED_PLACEMENT_SLOTS> slotsAvailable = {
+        1,
+        1,
+        1,
+        1,
+        1,
+        5,
+        5,
+        5,
+        10,
+        10,
+        10,
+        25,
+        25,
+        50
+    };
+
     // binary search array of cutoffs
     auto it = lower_bound(cutoffs.begin(), cutoffs.end(), score, greater<float>());
     float value;
     if (it != cutoffs.end())
     {
+        if (it - cutoffs.begin() < CONTENDED_PLACEMENT_SLOTS)
+        {
+            // we have 50 slots available so as long as lineupset coun t doesnt increase this can't overflow. still almost impossible
+            while ((placements[it - cutoffs.begin()] == slotsAvailable[it - cutoffs.begin()]))
+            {
+                it++;
+            }
+            placements[it - cutoffs.begin()]++;
+        }
         value = static_cast<float>(winnings[it - cutoffs.begin()]);
     }
     else
@@ -1144,7 +1168,7 @@ inline float determineWinnings(float score/*, vector<float>& winningsCutoffs, ve
 // 
 //
 
-float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerSim>& allPlayers)
+pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerSim>& allPlayers)
 {
     float winningsTotal = 0.f;
     float runningAvg = 0.f;
@@ -1158,6 +1182,9 @@ float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerS
         // only 64 players considered? need universal index
         // map of index -> score
         array<float, 64> playerScores = {};
+        // keep track of times we win high placing since that excludes additional same placements
+
+        array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
         // create map of player -> generated score
         // for each lineup -> calculate score
         float winnings = 0.f;
@@ -1173,15 +1200,30 @@ float runSimulation(const vector<vector<uint8_t>>& lineups, const vector<PlayerS
                 lineupScore += playerScores[player];
             }
             // lookup score -> winnings
-            winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/);
+            // need to account for my own entries for winnings
+            winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/, placementCount);
         }
         return winnings;
     });
 
+    // we can calculate std dev per lineup and calculate risk of whole set
+    // i guess just using simulated variance of set is fine for now
     winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+    // calculate std dev here:
+    // sqrt (1/n * [(val - mean)^2 + ]
+
 
     float expectedValue = winningsTotal / SIMULATION_COUNT;
-    return expectedValue;
+    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
+    {
+        float diff = (val - expectedValue);
+        return diff * diff;
+    });
+
+    float stdDev = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+    stdDev = sqrt(stdDev / SIMULATION_COUNT);
+
+    return make_pair(expectedValue, stdDev);
 }
 
 
@@ -1230,6 +1272,27 @@ inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& all
     return set;
 }
 
+struct lineup_set
+{
+    vector<vector<uint8_t>> set;
+    float ev;
+    float stdev;
+};
+
+bool operator<(const lineup_set& lhs, const lineup_set& rhs)
+{
+    // backwards so highest value is "lowest" (best ranked lineup)
+    float diff = lhs.ev - rhs.ev;
+    if (diff == 0)
+    {
+        return lhs.stdev < rhs.stdev;
+    }
+    else
+    {
+        return diff > 0;
+    }
+}
+
 void lineupSelectorOwnership(const string ownershipFile, const string playersFile)
 {
     vector<Player> p = parsePlayers(playersFile);
@@ -1269,16 +1332,45 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
     // get all possible lineups
     // choose set
     // do random for now, randomly select set then run simulation
+    vector<lineup_set> bestResults;
     float bestValue = 0.f;
-    vector<vector<uint8_t>> bestSet;
+    //vector<vector<uint8_t>> bestSet;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
-        vector<vector<uint8_t>> set = getTargetSet(allLineups, ownership, generator);
-        float value = runSimulation(set, allPlayers);
-        if (value > bestValue)
+        lineup_set set = { getTargetSet(allLineups, ownership, generator), 0, 0 };
+        //vector<vector<uint8_t>> set = ;
+        //float value;
+        //float stdev;
+        tie(set.ev, set.stdev) = runSimulation(set.set, allPlayers);
+
+        bestResults.push_back(set);
+        sort(bestResults.begin(), bestResults.end());
+        float lastRisk = 100000.f; // high so we keep first result
+        auto it = remove_if(bestResults.begin(), bestResults.end(), [&lastRisk](lineup_set& s)
         {
-            bestValue = value;
-            bestSet = set;
+            if (s.stdev >= lastRisk)
+            {
+                return true;
+            }
+            else
+            {
+                lastRisk = s.stdev;
+                return false;
+            }
+        });
+
+        bestResults.resize(distance(bestResults.begin(), it));
+        if (bestResults.size() > 10)
+        {
+            bestResults.resize(10);
+        }
+
+        if (set.ev > bestValue)
+        {
+            // sort by value then by risk
+            // remove if < ev and >= risk
+            bestValue = set.ev;
+            //bestSet = set;
             cout << bestValue << endl;
         }
     }
@@ -1287,14 +1379,19 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
     ofstream myfile;
     myfile.open("outputset.csv");
 
-    myfile << bestValue;
-    myfile << endl;
-    for (auto& lineup : bestSet)
+    //myfile << bestValue;
+    //myfile << endl;
+    for (auto& set : bestResults)
     {
-        for (auto& x : lineup)
+        myfile << set.ev << "," << set.stdev << endl;
+        for (auto& lineup : set.set)
         {
-            myfile << p[x].name;
-            myfile << ",";
+            for (auto& x : lineup)
+            {
+                myfile << p[x].name;
+                myfile << ",";
+            }
+            myfile << endl;
         }
         myfile << endl;
     }
@@ -1335,7 +1432,9 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
-        float value = runSimulation(set, allPlayers);
+        float value;
+        float ev;
+        tie(value, ev) = runSimulation(set, allPlayers);
         if (value > bestValue)
         {
             bestValue = value;
