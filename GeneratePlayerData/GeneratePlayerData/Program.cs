@@ -66,14 +66,18 @@ namespace GeneratePlayerData
             // Gather information from Numberfire tables
             HttpClient client = new HttpClient();
 
-            var playerResponse = await client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI);
-            var playerResult = await playerResponse.Content.ReadAsStringAsync();
+            var playerResponse = client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI);
+            var nfDefenseResponse = client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI + "/D");
+            var redditUserHistoryResponse = client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI);
+
+            await Task.WhenAll(playerResponse, nfDefenseResponse, redditUserHistoryResponse);
+
+            var playerResult = await playerResponse.Result.Content.ReadAsStringAsync();
             HtmlDocument playerDoc = new HtmlDocument();
             playerDoc.LoadHtml(playerResult);
             IEnumerable<HtmlNode> tableNodes = playerDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
 
-            var nfDefenseResponse = await client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI + "/D");
-            var nfDefenseResult = await nfDefenseResponse.Content.ReadAsStringAsync();
+            var nfDefenseResult = await nfDefenseResponse.Result.Content.ReadAsStringAsync();
             HtmlDocument nfDefenseDoc = new HtmlDocument();
             nfDefenseDoc.LoadHtml(nfDefenseResult);
             IEnumerable<HtmlNode> nfDefenseTableNodes = nfDefenseDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
@@ -83,8 +87,7 @@ namespace GeneratePlayerData
             // 2. Fetch the post, find the link to the blog post
             // 3. Go to the blog post & fetch projection data
             // ** (1) **
-            var redditUserHistoryResponse = await client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI);
-            var redditUserHistoryResult = await redditUserHistoryResponse.Content.ReadAsStringAsync();
+            var redditUserHistoryResult = await redditUserHistoryResponse.Result.Content.ReadAsStringAsync();
             HtmlDocument userHistoryDoc = new HtmlDocument();
             userHistoryDoc.LoadHtml(redditUserHistoryResult);
             var topPost = userHistoryDoc.DocumentNode.SelectSingleNode("//div[contains(@id,'siteTable')]/div[contains(@class,'thing')]");
