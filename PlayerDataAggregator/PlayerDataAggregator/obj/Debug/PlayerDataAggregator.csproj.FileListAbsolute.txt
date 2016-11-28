@@ -1,0 +1,8 @@
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.exe.config
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.exe
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.pdb
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\Newtonsoft.Json.dll
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\Newtonsoft.Json.xml
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.csprojResolveAssemblyReference.cache
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.exe
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.pdb
