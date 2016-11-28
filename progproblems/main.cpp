@@ -22,13 +22,15 @@
 #include <numeric>
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 100
+#define LINEUPCOUNT 10
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 1000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 100000
+#define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 50
+// number of pools to generate
+#define NUM_ITERATIONS_OWNERSHIP 50
 
 using namespace concurrency;
 using namespace std;
@@ -197,6 +199,21 @@ vector<string> getNextLineAndSplitIntoTokens(istream& str)
     return result;
 }
 
+vector<string> parseNames(string filename)
+{
+    vector<string> result;
+    ifstream       file(filename);
+    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+    int count = 0;
+    while (tokens.size() == 1)
+    {
+        result.emplace_back(tokens[0]);
+        tokens = getNextLineAndSplitIntoTokens(file);
+    }
+
+    return result;
+}
+
 vector<Player> parsePlayers(string filename)
 {
     vector<Player> result;
@@ -221,7 +238,37 @@ vector<Player> parsePlayers(string filename)
 
     return result;
 }
+vector<vector<string>> parseLineupString(const string filename)
+{
+    vector<vector<string>> result;
+    ifstream       file(filename);
+    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+    vector<string> current;
 
+    while (tokens.size() == 1)
+    {
+        if (tokens[0].size() > 0)
+        {
+            if (isalpha(tokens[0][0]))
+            {
+                current.push_back(tokens[0]);
+            }
+            else
+            {
+                // value/cost number, signifies end of lineup.
+                // duration at start of file
+                if (current.size() > 0)
+                {
+                    result.push_back(current);
+                    current.clear();
+                }
+            }
+        }
+        tokens = getNextLineAndSplitIntoTokens(file);
+    }
+
+    return result;
+}
 // for now just parse player names like output.csv current does, could make format easier to parse
 vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint8_t>& playerIndices)
 {
@@ -450,7 +497,7 @@ Players2 generateLineup(vector<Player>& p)
     return knapsackPositions(100, 0, Players2(), playersByPos);
 }
 
-lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, double& msTime)
+lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime)
 {
     auto start = chrono::steady_clock::now();
     vector<vector<Player>> playersByPos(9);
@@ -518,18 +565,18 @@ lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers
                 }
                 else if (i == 3)
                 {
-                    skipPositionsSet |= 64;
+                    skipPositionsSet |= 1 << 6;
                 }
                 else if (i == 4)
                 {
-                    skipPositionsSet |= 1 << 8;
+                    skipPositionsSet |= 1 << 9;
                 }
 
             }
         }
     }
-
-    lineup_list output = knapsackPositionsN(100, 0, currentPlayers, playersByPos, 0, 0, skipPositionsSet);
+    // budget is wrong
+    lineup_list output = knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0, 0, skipPositionsSet);
 
     auto end = chrono::steady_clock::now();
     auto diff = end - start;
@@ -606,12 +653,31 @@ void saveLineupList(vector<Player>& p, lineup_list& lineups, string fileout, dou
     myfile.close();
 }
 
-void runPlayerOptimizerN(string filein, string fileout)
+void runPlayerOptimizerN(string filein, string fileout, string lineupstart)
 {
     vector<Player> p = parsePlayers(filein);
+    vector<string> startingPlayers = parseNames(lineupstart);
+
+    Players2 startingLineup;
+    // if we can't add player, go to next round
+    int budgetUsed = 0;
+    for (auto& pl : startingPlayers)
+    {
+        auto it = find_if(p.begin(), p.end(), [&pl](const Player& p) {
+            return pl == p.name;
+        });
+        if (it != p.end())
+        {
+            startingLineup.tryAddPlayer(it->pos, it->proj, it->index);
+            budgetUsed += it->cost;
+        }
+
+        // output which set we're processing
+        cout << pl << ",";
+    }
 
     double msTime = 0;
-    lineup_list lineups = generateLineupN(p, vector<string>(), Players2(), msTime);
+    lineup_list lineups = generateLineupN(p, vector<string>(), startingLineup, budgetUsed, msTime);
     saveLineupList(p, lineups, fileout, msTime);
 }
 
@@ -739,9 +805,9 @@ vector<pair<string, float>> parseOwnership(string filename)
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
     int count = 0;
     // two david johnsons, just only add first value for now, should be fine
-    while (tokens.size() == 2)
+    while (tokens.size() >= 2)
     {
-        float proj = stof(tokens[1]);
+        float proj = stof(tokens[tokens.size() - 1]);
         normalizeName(tokens[0]);
         result.emplace_back(tokens[0], proj);
         tokens = getNextLineAndSplitIntoTokens(file);
@@ -802,6 +868,16 @@ void tweakProjections(vector<tuple<string, int, float, int>>& positionPlayers, i
 
 }
 
+// this works great!
+// ideally want more "iterations" since randomly drawing even 50 sets won't have good representation of combinations
+// ways to improve are to specify ownership relationships (stacks, avoid certain stacks)
+// so {includes}{excludes}{weighting}
+// then it might be a reasonable strategy to iterate driver -> simulator to get enough diversity to find optimal "sharpe" value
+// then we just need to improve stdev data for better simulations (ideally improve projections)
+// figure out best way to use bigger pool but still get approximate player ownership targets
+// improve simulations with better cutoff estimation - 
+// numberfire has CI for projection can extrapolation stddev from that
+// std dev of receptions points + stdv from CI, for now just use CI by itself
 // needs to be not multiset driven but some other way to express allowed players/forced players
 void ownershipDriver(string playersFile, string ownershipFile)
 {
@@ -818,21 +894,29 @@ void ownershipDriver(string playersFile, string ownershipFile)
         return it.first;
     });
     
-    int max = (1 << targetPlayers.size());
+    // X sets where its based on randomness, so 20? for now
 
+    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    default_random_engine generator(seed1);
+    uniform_real_distribution<float> distribution(0.f, 1.0f);
     // 2^n
-    for (int i = 0; i < max; i++)
+    for (int i = 0; i < NUM_ITERATIONS_OWNERSHIP; i++)
     {
         // now targetplayers is all players we want to "toggle"
         vector<string> includedPlayers;
         vector<string> excludedPlayers;
-        partition_copy(targetPlayers.begin(), targetPlayers.end(), back_inserter(includedPlayers), back_inserter(excludedPlayers), [&i, &targetPlayers](string& player)
+        // needs to be some relationships between players:
+        // eg. murray/david johnson should be mutex but maybe not disallowed players
+        partition_copy(targetPlayers.begin(), targetPlayers.end(), back_inserter(includedPlayers), back_inserter(excludedPlayers), [&](string& player)
         {
+            // randomly choose player with probability
             int index = &player - &targetPlayers[0];
-            return ((i & (1 << index)) != 0);
+            return distribution(generator) <= ownership[index].second;
         });
         Players2 startingLineup;
+        bool valid = true;
         // if we can't add player, go to next round
+        int budgetUsed = 0;
         for (auto& pl : includedPlayers)
         {
             auto it = find_if(p.begin(), p.end(), [&pl](const Player& p) {
@@ -840,29 +924,61 @@ void ownershipDriver(string playersFile, string ownershipFile)
             });
             if (it != p.end())
             {
-                startingLineup.tryAddPlayer(it->pos, it->proj, it->index);
+                if (!startingLineup.tryAddPlayer(it->pos, it->proj, it->index))
+                {
+                    valid = false;
+                    i--;
+                    break;
+                }
+                budgetUsed += it->cost;
             }
 
             // output which set we're processing
             cout << pl << ",";
         }
-        cout << endl;
+        if (!valid)
+        {
+            cout << "invalid";
+            continue;
+        }
 
         {
             double msTime = 0;
-            lineup_list lineups = generateLineupN(p, excludedPlayers, startingLineup, msTime);
+            lineup_list lineups = generateLineupN(p, excludedPlayers, startingLineup, budgetUsed, msTime);
 
-            ostringstream stream;
-            stream << "output-" << i << ".csv";
-            saveLineupList(p, lineups, stream.str(), msTime);
+            // skip over lineups where
+            if (lineups[0].totalCount < 9 || lineups[0].value < 121)
+            {
+                cout << "low value: " << lineups[0].value << "," << lineups[0].totalCount;
+                i--;
+                continue;
+            }
+            else
+            {
+                ostringstream stream;
+                stream << "output-" << i << ".csv";
+                saveLineupList(p, lineups, stream.str(), msTime);
+            }
         }
+        cout << endl;
     }
 }
 
 void removeDominatedPlayers(string filein, string fileout)
 {
     vector<Player> players = parsePlayers(filein);
-    //vector<tuple<string, int, float, int>> playersResult = parseCosts("costs.csv");
+
+    unordered_map<string, float> differencing = parseProjections("diffs.csv");
+    for (auto& p : players)
+    {
+        auto itDiff = differencing.find(p.name);
+
+        // players we dont want to include can just have large negative diff
+        if (itDiff != differencing.end())
+        {
+            p.proj += itDiff->second;
+        }
+    }
 
     ofstream myfile;
     myfile.open(fileout);
@@ -1216,8 +1332,16 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     float expectedValue = winningsTotal / SIMULATION_COUNT;
     transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
     {
-        float diff = (val - expectedValue);
-        return diff * diff;
+        // variation below target:
+        float diff = val - 10 * TARGET_LINEUP_COUNT;  //(val - expectedValue);
+        if (diff < 0)
+        {
+            return diff * diff;
+        }
+        else
+        {
+            return 0.0f;
+        }
     });
 
     float stdDev = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
@@ -1245,7 +1369,7 @@ inline vector<vector<uint8_t>> getRandomSet(const vector<vector<uint8_t>>& start
     return set;
 }
 
-inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& allLineups, vector<pair<string, float>>& ownership, default_random_engine& generator)
+inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& allLineups, default_random_engine& generator)
 {
     vector<vector<uint8_t>> set(TARGET_LINEUP_COUNT);
     // satisfy ownership first then pull from last set
@@ -1255,11 +1379,11 @@ inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& all
     // for now i can manually do it with output files or something
     // 
     int currentIndex = 0;
-    for (int i = 0; i < ownership.size(); i++)
+    for (int i = 0; i < NUM_ITERATIONS_OWNERSHIP; i++)
     {
-        auto & val = ownership[i];
-        int currentTarget = (int)(val.second * TARGET_LINEUP_COUNT);
-        if (i == ownership.size() - 1)
+        //auto & val = ownership[i];
+        int currentTarget = (int)(TARGET_LINEUP_COUNT / NUM_ITERATIONS_OWNERSHIP);
+        if (i == NUM_ITERATIONS_OWNERSHIP - 1)
         {
             currentTarget = TARGET_LINEUP_COUNT - currentIndex;
         }
@@ -1277,6 +1401,10 @@ struct lineup_set
     vector<vector<uint8_t>> set;
     float ev;
     float stdev;
+    float getSharpe()
+    {
+        return (ev - (10 * TARGET_LINEUP_COUNT)) / stdev;
+    }
 };
 
 bool operator<(const lineup_set& lhs, const lineup_set& rhs)
@@ -1306,12 +1434,12 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
         playerIndices.emplace(x.name, x.index);
     }
 
-    vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
+    //vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     default_random_engine generator(seed1);
 
-    int totalSets = ownership.size();
+    int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
 
     vector<vector<vector<uint8_t>>> allLineups(totalSets);
     for (int i = 0; i < totalSets; i++)
@@ -1333,11 +1461,12 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
     // choose set
     // do random for now, randomly select set then run simulation
     vector<lineup_set> bestResults;
+    vector<lineup_set> bestSharpeResults;
     float bestValue = 0.f;
     //vector<vector<uint8_t>> bestSet;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
-        lineup_set set = { getTargetSet(allLineups, ownership, generator), 0, 0 };
+        lineup_set set = { getTargetSet(allLineups, generator), 0, 0 };
         //vector<vector<uint8_t>> set = ;
         //float value;
         //float stdev;
@@ -1346,6 +1475,7 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
         bestResults.push_back(set);
         sort(bestResults.begin(), bestResults.end());
         float lastRisk = 100000.f; // high so we keep first result
+        // return / risk is sharpe ratio (its actually ev - 500) / stdev
         auto it = remove_if(bestResults.begin(), bestResults.end(), [&lastRisk](lineup_set& s)
         {
             if (s.stdev >= lastRisk)
@@ -1365,6 +1495,16 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
             bestResults.resize(10);
         }
 
+        bestSharpeResults.push_back(set);
+        sort(bestSharpeResults.begin(), bestSharpeResults.end(), [](lineup_set& a, lineup_set& b)
+        {
+            return a.getSharpe() > b.getSharpe();
+        });
+        if (bestSharpeResults.size() > 10)
+        {
+            bestSharpeResults.resize(10);
+        }
+
         if (set.ev > bestValue)
         {
             // sort by value then by risk
@@ -1374,29 +1514,85 @@ void lineupSelectorOwnership(const string ownershipFile, const string playersFil
             cout << bestValue << endl;
         }
     }
-
-    // output bestset
-    ofstream myfile;
-    myfile.open("outputset.csv");
-
-    //myfile << bestValue;
-    //myfile << endl;
-    for (auto& set : bestResults)
     {
-        myfile << set.ev << "," << set.stdev << endl;
-        for (auto& lineup : set.set)
+        // output bestset
+        ofstream myfile;
+        myfile.open("outputset.csv");
+
+        //myfile << bestValue;
+        //myfile << endl;
+        for (auto& set : bestResults)
+        {
+            myfile << set.ev << "," << set.stdev << endl;
+            for (auto& lineup : set.set)
+            {
+                for (auto& x : lineup)
+                {
+                    myfile << p[x].name;
+                    myfile << ",";
+                }
+                myfile << endl;
+            }
+            myfile << endl;
+        }
+
+        myfile.close();
+    }
+    {
+        ofstream myfile;
+        myfile.open("outputsetsharpe.csv");
+
+        //myfile << bestValue;
+        //myfile << endl;
+        for (auto& set : bestSharpeResults)
+        {
+            myfile << set.ev << "," << set.stdev << endl;
+            myfile << set.getSharpe() << endl;
+            for (auto& lineup : set.set)
+            {
+                for (auto& x : lineup)
+                {
+                    myfile << p[x].name;
+                    myfile << ",";
+                }
+                myfile << endl;
+            }
+            myfile << endl;
+        }
+
+        myfile.close();
+    }
+}
+
+void splitLineups(const string lineups)
+{
+    vector<vector<string>> allLineups;
+    allLineups = parseLineupString(lineups);
+
+    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    default_random_engine generator(seed1);
+    shuffle(allLineups.begin(), allLineups.end(), generator);
+    ofstream myfile;
+    myfile.open("outputsetSplit.csv");
+    int i = 0;
+        for (auto& lineup : allLineups)
         {
             for (auto& x : lineup)
             {
-                myfile << p[x].name;
+                myfile << x;
                 myfile << ",";
             }
             myfile << endl;
         }
+        i++;
+        if (i == 10)
+        {
+            myfile << endl;
+        }
         myfile << endl;
-    }
 
     myfile.close();
+
 }
 
 void lineupSelector(const string lineupsFile, const string playersFile)
@@ -1500,7 +1696,7 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "optimizen") == 0)
         {
-            string filein, fileout;
+            string filein, fileout, lineupstart;
             if (argc > 2)
             {
                 filein = argv[2];
@@ -1518,7 +1714,16 @@ int main(int argc, char* argv[]) {
             {
                 fileout = "output.csv";
             }
-            runPlayerOptimizerN(filein, fileout);
+
+            if (argc > 4)
+            {
+                lineupstart = argv[4];
+            }
+            else
+            {
+                lineupstart = "";
+            }
+            runPlayerOptimizerN(filein, fileout, lineupstart);
         }
 
         if (strcmp(argv[1], "import") == 0)
@@ -1627,6 +1832,11 @@ int main(int argc, char* argv[]) {
                 ownershipFile = "ownership.csv";
             }
             lineupSelectorOwnership(ownershipFile, playersFile);
+        }
+
+        if (strcmp(argv[1], "splituplineups") == 0)
+        {
+            splitLineups("outputset.csv");
         }
     }
     return 0;
