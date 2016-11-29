@@ -91,7 +91,7 @@ namespace GeneratePlayerData
                 zippedInfo.Info.AddRange(playerInfoTable);
                 zippedInfo.Projections.AddRange(projectionsInfoTable);
                 zippedInfo.Position.AddRange(
-                    Enumerable.Repeat(TranslateToPositionEnum(NUMBERFIRE_POSITION_URL_SUFFIXES[i]), zippedInfo.Info.Count));
+                    Enumerable.Repeat(TranslateToPositionEnum(NUMBERFIRE_POSITION_URL_SUFFIXES[i]), playerInfoTable.Count()));
             }
 
             // For reddit projections we have to go down the following pattern:
