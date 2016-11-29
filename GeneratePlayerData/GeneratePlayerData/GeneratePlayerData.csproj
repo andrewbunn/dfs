@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="EmpeopledBlogPostResponse.cs" />
+    <Compile Include="NumberFireZippedPlayerInfo.cs" />
     <Compile Include="PlayerProjectionData.cs" />
     <Compile Include="PlayerProjectionAlteration.cs" />
     <Compile Include="Program.cs" />
