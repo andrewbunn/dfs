@@ -933,46 +933,6 @@ void playerStrictDominator(vector<Player>& players)
     }
 }
 
-// different idea, curious to see results
-void stochasticOptimizer()
-{
-    // randomly choose "results" of the week to get an optimal lineup set given those results
-    // save that lineup set
-    // then run simulations with those sets to select optimal sharpe based set
-
-    vector<Player> p = parsePlayers("players.csv");
-
-    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-    default_random_engine generator(seed1);
-    int iterations = STOCHASTIC_OPTIMIZER_RUNS;
-    for (int i = 0; i < iterations; i++)
-    {
-        // randomly get values for each player, recreate players array and remove dominated players for fast optimization
-        vector<Player> playersRandom;
-        playersRandom.reserve(p.size());
-
-        for (auto& player : p)
-        {
-            normal_distribution<float> distribution(player.proj, 6.0f);
-            float newProj = distribution(generator);
-            playersRandom.emplace_back(player.name, player.cost, newProj, player.pos, player.index);
-        }
-
-        // remove dominated players 
-        playerStrictDominator(playersRandom);
-        cout << playersRandom.size() << endl;
-        // generate lineups and save
-        double msTime = 0;
-        lineup_list lineups = generateLineupN(playersRandom, vector<string>(), Players2(), 0, msTime);
-        
-        {
-            ostringstream stream;
-            stream << "output-" << i << ".csv";
-            saveLineupList(playersRandom, lineups, stream.str(), msTime);
-        }
-    }
-}
-
 // main flaw is that we need lots of ownership restrictions to ensure we're not too overweight on any players.
 // but putting in lots of players "excludes" a lot of value 
 // i think we can try an iterative process to determine "ownership" file but might need more mutex based selection because of limiting pool so much
@@ -1759,104 +1719,6 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
     return bestSharpeResults[0];
 }
 
-void lineupSelectorFilter(const string ownershipFile, const string playersFile)
-{
-    vector<Player> p = parsePlayers(playersFile);
-    vector<PlayerSim> allPlayers;
-    // create map of player -> index for lineup parser
-    unordered_map<string, uint8_t> playerIndices;
-    // for now just use same std dev
-    for (auto& x : p)
-    {
-        allPlayers.emplace_back(x, 6.f);
-        playerIndices.emplace(x.name, x.index);
-    }
-
-    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-    default_random_engine generator(seed1);
-
-    //int totalSets = STOCHASTIC_OPTIMIZER_RUNS;
-    int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
-
-    vector<vector<vector<uint8_t>>> allLineups(totalSets);
-    for (int i = 0; i < totalSets; i++)
-    {
-        ostringstream stream;
-        stream << "output-" << i << ".csv";
-        allLineups[i] = parseLineups(stream.str(), playerIndices);
-    }
-    float bestSharpe = 0.f;
-    vector<lineup_set> bestResults;
-    vector<lineup_set> bestSharpeResults;
-    lineup_set set = { vector<vector<uint8_t>>(totalSets), 0, 0 };
-
-    // all lineups
-    for (int i = 0; i < totalSets; i++)
-    {
-        set.set[i] = allLineups[i][0];
-    }
-
-    for (int i = NUM_ITERATIONS_OWNERSHIP; i > 50; i--)
-    {
-        float worstSharpe = 10000.f;
-        int worstIndex = 0;
-        for (int j = 0; j < i; j++)
-        {
-            vector<uint8_t> removed = set.set[j];
-            set.set.erase(set.set.begin() + j);
-            tie(set.ev, set.stdev) = runSimulation(set.set, allPlayers);
-
-            if (set.getSharpe() < worstSharpe)
-            {
-                worstIndex = j;
-                worstSharpe = set.getSharpe();
-                cout << set.ev << ", " << set.getSharpe() << endl;
-            }
-            set.set.push_back(removed);
-        }
-        // remove filtered lineup 
-        set.set.erase(set.set.begin() + worstIndex);
-    }
-    bestSharpeResults.push_back(set);
-    outputSharpeResults(p, bestSharpeResults);
-
-    // analyze ownership on result
-    vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
-    unordered_map<string, int> playerCounts;
-    vector<string> targetPlayers(ownership.size());
-    transform(ownership.begin(), ownership.end(), targetPlayers.begin(), [](const pair<const string, float>& it)
-    {
-        return it.first;
-    });
-    for (auto& i : ownership)
-    {
-        playerCounts.emplace(i.first, 0);
-    }
-
-    for (auto& l : (bestSharpeResults[0].set))
-    {
-        for (auto& x : l)
-        {
-            auto it = playerCounts.find(p[x].name);
-            if (it != playerCounts.end())
-            {
-                playerCounts[p[x].name]++;
-            }
-        }
-    }
-
-    {
-        ofstream myfile;
-        myfile.open("ownershipResults.csv");
-        for (auto& i : playerCounts)
-        {
-            myfile << i.first << ",";
-            myfile << ((float)i.second / 50.f) << endl;
-        }
-        myfile.close();
-    }
-}
-
 void splitLineups(const string lineups)
 {
     vector<vector<string>> allLineups;
@@ -2308,37 +2170,9 @@ int main(int argc, char* argv[]) {
             lineupSelectorOwnership(ownershipFile, playersFile);
         }
 
-        if (strcmp(argv[1], "lse") == 0)
-        {
-            string playersFile, ownershipFile;
-            if (argc > 2)
-            {
-                playersFile = argv[2];
-            }
-            else
-            {
-                playersFile = "players.csv";
-            }
-
-            if (argc > 3)
-            {
-                ownershipFile = argv[3];
-            }
-            else
-            {
-                ownershipFile = "ownership.csv";
-            }
-            lineupSelectorFilter(ownershipFile, playersFile);
-        }
-
         if (strcmp(argv[1], "splituplineups") == 0)
         {
             splitLineups("outputset.csv");
-        }
-
-        if (strcmp(argv[1], "stochasticoptimizer") == 0)
-        {
-            stochasticOptimizer();
         }
 
         if (strcmp(argv[1], "determineownership") == 0)
