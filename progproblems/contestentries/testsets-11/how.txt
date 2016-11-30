@@ -1,0 +1,1 @@
+lots of iterative determine ownership, keep best result so far
