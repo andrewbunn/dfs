@@ -127,37 +127,30 @@ namespace GeneratePlayerData
             List<PlayerProjectionData> defenseData = new List<PlayerProjectionData>();
             for(int i = 0; i < zippedInfo.Info.Count; i++)
             {
-                try
-                {
-                    var playerName = zippedInfo.Info[i].Descendants("span")
-                        .Where(a => a.Attributes["class"].Value.Contains("full")).FirstOrDefault();
-                    var projection = zippedInfo.Projections[i].Descendants("td")
-                        .Where(a => a.HasAttributes && a.Attributes["class"] != null && a.Attributes["class"].Value.Contains("fanduel_fp")).FirstOrDefault();
-                    var confidenceText = zippedInfo.Projections[i].SelectSingleNode("td[2]").InnerText.Trim();
-                    var position = zippedInfo.Position[i];
-                    var playerNameText = playerName != null ? playerName.InnerText.Trim() : "";
-                    var projectionValue = projection != null ? Convert.ToDecimal(projection.InnerText.Trim()) : 0M;
-                    var standardDevText = confidenceText.Split('-');
-                    var standardDev = standardDevText.Length == 2 ? 
-                        projectionValue - Convert.ToDecimal(standardDevText[0]) :
-                        projectionValue - Convert.ToDecimal(standardDevText[1]) * -1;
+                var playerName = zippedInfo.Info[i].Descendants("span")
+                    .Where(a => a.Attributes["class"].Value.Contains("full")).FirstOrDefault();
+                var projection = zippedInfo.Projections[i].Descendants("td")
+                    .Where(a => a.HasAttributes && a.Attributes["class"] != null && a.Attributes["class"].Value.Contains("fanduel_fp")).FirstOrDefault();
+                var confidenceText = zippedInfo.Projections[i].SelectSingleNode("td[2]").InnerText.Trim();
+                var position = zippedInfo.Position[i];
+                var playerNameText = playerName != null ? playerName.InnerText.Trim() : "";
+                var projectionValue = projection != null ? Convert.ToDecimal(projection.InnerText.Trim()) : 0M;
+                var standardDevText = confidenceText.Split('-');
+                var standardDev = standardDevText.Length == 2 ? 
+                    projectionValue - Convert.ToDecimal(standardDevText[0]) :
+                    projectionValue - Convert.ToDecimal(standardDevText[1]) * -1;
 
-                    var playerProjectionData = new PlayerProjectionData()
-                    {
-                        Name = NormalizeName(playerNameText),
-                        Projection = projectionValue,
-                        Position = position.ToString(),
-                        StandardDeviation = standardDev
-                    };
-                    if (position == PositionEnum.def)
-                        defenseData.Add(playerProjectionData);
-                    else
-                        playerData.Add(playerProjectionData);
-                }
-                catch(Exception ex)
+                var playerProjectionData = new PlayerProjectionData()
                 {
-                    var j = ex;
-                }
+                    Name = NormalizeName(playerNameText),
+                    Projection = projectionValue,
+                    Position = position.ToString(),
+                    StandardDeviation = standardDev
+                };
+                if (position == PositionEnum.def)
+                    defenseData.Add(playerProjectionData);
+                else
+                    playerData.Add(playerProjectionData);
             }
 
             // Now translate the defense data from the blog post and merge with the existing defense information
@@ -227,7 +220,8 @@ namespace GeneratePlayerData
                             n.PositionEnum == player.PositionEnum : true)).FirstOrDefault();
 
                         var exclude = !includeThursdayPlayers && player.GameStartTime.DayOfWeek == DayOfWeek.Thursday;
-                        if (matchingPlayer != null && !exclude)
+                        var gameFinished = player.GameStartTime < DateTime.Now;
+                        if (matchingPlayer != null && !exclude && !gameFinished)
                         {
                             var projectedPoints = matchingPlayer.Projection;
                             var stdDeviation = matchingPlayer.StandardDeviation;
