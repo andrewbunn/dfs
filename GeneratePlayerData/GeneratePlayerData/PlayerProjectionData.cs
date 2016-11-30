@@ -11,6 +11,7 @@ namespace GeneratePlayerData
         public string Name { get; set; }
         public decimal Projection { get; set; }
         public string Position { get; set; }
+        public decimal StandardDeviation { get; set; }
 
         public PositionEnum PositionEnum
         {

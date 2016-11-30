@@ -15,7 +15,7 @@ namespace GeneratePlayerData
     class Program
     {
         private const string YAHOO_PLAYER_DATA_URI = "https://dfyql-ro.sports.yahoo.com/v2/external/playersFeed/nfl";
-        private const string NUMBERFIRE_PROJECTIONS_DATA_URI = "http://www.numberfire.com/nfl/daily-fantasy/daily-football-projections";
+        private const string NUMBERFIRE_PROJECTIONS_DATA_URI = "https://www.numberfire.com/nfl/fantasy/fantasy-football-projections/{0}";
         private const string REDDIT_BASE_URI = "https://www.reddit.com";
         private const string REDDIT_DEFENSE_URI = "/user/quickonthedrawl/submitted/";
         private const string EMPEOPLED_POST_URI = "https://empeopled.com/discussion?object_type=share&object_id={0}&comment_id=";
@@ -23,6 +23,8 @@ namespace GeneratePlayerData
         private const int BASE_DEFENSE_BLOG_PROJ = 5;
         private const decimal BLOG_DEFENSE_WEIGHT = .5M;
         private const decimal NUMBERFIRE_DEFENSE_WEIGHT = .5M;
+
+        private static readonly string[] NUMBERFIRE_POSITION_URL_SUFFIXES = { "qb", "rb", "wr", "te", "d" };
 
         static void Main(string[] args) 
         {
@@ -65,29 +67,39 @@ namespace GeneratePlayerData
         {
             // Gather information from Numberfire tables
             HttpClient client = new HttpClient();
+            List<Task<HttpResponseMessage>> httpResponses = new List<Task<HttpResponseMessage>>();
+            foreach(var pos in NUMBERFIRE_POSITION_URL_SUFFIXES)
+            {
+                httpResponses.Add(client.GetAsync(string.Format(NUMBERFIRE_PROJECTIONS_DATA_URI, pos)));
+            }
 
-            var playerResponse = client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI);
-            var nfDefenseResponse = client.GetAsync(NUMBERFIRE_PROJECTIONS_DATA_URI + "/D");
-            var redditUserHistoryResponse = client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI);
+            // Add the call for the reddit thread response
+            httpResponses.Add(client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI));
 
-            await Task.WhenAll(playerResponse, nfDefenseResponse, redditUserHistoryResponse);
+            await Task.WhenAll(httpResponses);
 
-            var playerResult = await playerResponse.Result.Content.ReadAsStringAsync();
-            HtmlDocument playerDoc = new HtmlDocument();
-            playerDoc.LoadHtml(playerResult);
-            IEnumerable<HtmlNode> tableNodes = playerDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
-
-            var nfDefenseResult = await nfDefenseResponse.Result.Content.ReadAsStringAsync();
-            HtmlDocument nfDefenseDoc = new HtmlDocument();
-            nfDefenseDoc.LoadHtml(nfDefenseResult);
-            IEnumerable<HtmlNode> nfDefenseTableNodes = nfDefenseDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
+            NumberFireZippedPlayerInfo zippedInfo = new NumberFireZippedPlayerInfo();
+            // Don't include the last added response, process is different for the reddit post.
+            for(int i = 0; i < httpResponses.Count - 1; i++)
+            {
+                var playerResult = await httpResponses[i].Result.Content.ReadAsStringAsync();
+                HtmlDocument playerDoc = new HtmlDocument();
+                playerDoc.LoadHtml(playerResult);
+                var nodes = playerDoc.DocumentNode.SelectNodes("//tbody").Where(n => n.ChildNodes.Count > 1);
+                var playerInfoTable = nodes.ElementAt(0).Descendants("tr");
+                var projectionsInfoTable = nodes.ElementAt(1).Descendants("tr");
+                zippedInfo.Info.AddRange(playerInfoTable);
+                zippedInfo.Projections.AddRange(projectionsInfoTable);
+                zippedInfo.Position.AddRange(
+                    Enumerable.Repeat(TranslateToPositionEnum(NUMBERFIRE_POSITION_URL_SUFFIXES[i]), playerInfoTable.Count()));
+            }
 
             // For reddit projections we have to go down the following pattern:
             // 1. Find the reddit post
             // 2. Fetch the post, find the link to the blog post
             // 3. Go to the blog post & fetch projection data
             // ** (1) **
-            var redditUserHistoryResult = await redditUserHistoryResponse.Result.Content.ReadAsStringAsync();
+            var redditUserHistoryResult = await httpResponses[httpResponses.Count-1].Result.Content.ReadAsStringAsync();
             HtmlDocument userHistoryDoc = new HtmlDocument();
             userHistoryDoc.LoadHtml(redditUserHistoryResult);
             var topPost = userHistoryDoc.DocumentNode.SelectSingleNode("//div[contains(@id,'siteTable')]/div[contains(@class,'thing')]");
@@ -111,45 +123,41 @@ namespace GeneratePlayerData
             blogPostDoc.LoadHtml(blogData.Data.Content.Body);
             var blogDefenseNodes = blogPostDoc.DocumentNode.SelectNodes("//ol/li");
 
-            // Zip the data together and return
-            var playerInfo = tableNodes.ElementAt(0).Descendants("tr");
-            var projectionsInfo = tableNodes.ElementAt(1).Descendants("tr");
-            var zippedInfo = playerInfo.Zip(projectionsInfo, (info, proj) => new { info, proj});
-
-            var nfDefenseInfo = nfDefenseTableNodes.ElementAt(0).Descendants("tr");
-            var nfDefenseProjectionInfo = nfDefenseTableNodes.ElementAt(1).Descendants("tr");
-            var zippedNfDefenseInfo = nfDefenseInfo.Zip(nfDefenseProjectionInfo, (info, proj) => new { info, proj });
-            zippedInfo = zippedInfo.Concat(zippedNfDefenseInfo);
-
             List<PlayerProjectionData> playerData = new List<PlayerProjectionData>();
             List<PlayerProjectionData> defenseData = new List<PlayerProjectionData>();
-            foreach(var playerRow in zippedInfo)
+            for(int i = 0; i < zippedInfo.Info.Count; i++)
             {
-                // If our rows somehow become unaligned throw an exception
-                if(playerRow.info.Attributes["data-player-id"].Value != playerRow.proj.Attributes["data-player-id"].Value)
+                try
                 {
-                    throw new Exception("Data Player IDs unaligned.");
-                }
-                var playerName = playerRow.info.Descendants("a")
-                    .Where(a => a.Attributes["class"].Value.Contains("full")).FirstOrDefault();
-                var position = playerRow.info.Descendants("span")
-                    .Where(a => a.Attributes["class"].Value.Contains("player-info--position")).FirstOrDefault();
-                var projection = playerRow.proj.Descendants("td")
-                    .Where(a => a.Attributes["class"].Value.Contains("fp")).FirstOrDefault();
-                var playerNameText = playerName != null ? playerName.InnerText.Trim() : "";
-                var positionText = position != null ? position.InnerText.Trim() : "def";
-                var projectionText = projection != null ? projection.InnerText.Trim() : "0";
+                    var playerName = zippedInfo.Info[i].Descendants("span")
+                        .Where(a => a.Attributes["class"].Value.Contains("full")).FirstOrDefault();
+                    var projection = zippedInfo.Projections[i].Descendants("td")
+                        .Where(a => a.HasAttributes && a.Attributes["class"] != null && a.Attributes["class"].Value.Contains("fanduel_fp")).FirstOrDefault();
+                    var confidenceText = zippedInfo.Projections[i].SelectSingleNode("td[2]").InnerText.Trim();
+                    var position = zippedInfo.Position[i];
+                    var playerNameText = playerName != null ? playerName.InnerText.Trim() : "";
+                    var projectionValue = projection != null ? Convert.ToDecimal(projection.InnerText.Trim()) : 0M;
+                    var standardDevText = confidenceText.Split('-');
+                    var standardDev = standardDevText.Length == 2 ? 
+                        projectionValue - Convert.ToDecimal(standardDevText[0]) :
+                        projectionValue - Convert.ToDecimal(standardDevText[1]) * -1;
 
-                var playerProjectionData = new PlayerProjectionData()
+                    var playerProjectionData = new PlayerProjectionData()
+                    {
+                        Name = NormalizeName(playerNameText),
+                        Projection = projectionValue,
+                        Position = position.ToString(),
+                        StandardDeviation = standardDev
+                    };
+                    if (position == PositionEnum.def)
+                        defenseData.Add(playerProjectionData);
+                    else
+                        playerData.Add(playerProjectionData);
+                }
+                catch(Exception ex)
                 {
-                    Name = NormalizeName(playerNameText),
-                    Projection = Convert.ToDecimal(projectionText),
-                    Position = positionText
-                };
-                if (positionText == "def")
-                    defenseData.Add(playerProjectionData);
-                else
-                    playerData.Add(playerProjectionData);
+                    var j = ex;
+                }
             }
 
             // Now translate the defense data from the blog post and merge with the existing defense information
@@ -164,7 +172,7 @@ namespace GeneratePlayerData
                 {
                     Name = NormalizeName(cityName),
                     Projection = Convert.ToDecimal(projection),
-                    Position = "def"
+                    Position = PositionEnum.def.ToString()
                 });
             }
 
@@ -222,17 +230,19 @@ namespace GeneratePlayerData
                         if (matchingPlayer != null && !exclude)
                         {
                             var projectedPoints = matchingPlayer.Projection;
+                            var stdDeviation = matchingPlayer.StandardDeviation;
                             var projectionAlteration = projectionAlterations.Where(pa => pa.Name == pa.Name).FirstOrDefault();
                             if (projectionAlteration != null)
                             {
                                 projectedPoints += projectionAlteration.Difference;
                             }
 
-                            var output = string.Format("{0},{1},{2},{3},",
+                            var output = string.Format("{0},{1},{2},{3},{4},",
                                 player.Name,
                                 player.Salary,
                                 projectedPoints,
-                                (int)player.PositionEnum);
+                                (int)player.PositionEnum,
+                                stdDeviation);
                             writer.WriteLine(output);
                         }
                     }
@@ -287,6 +297,24 @@ namespace GeneratePlayerData
             }
 
             return name;
+        }
+
+        private static PositionEnum TranslateToPositionEnum(string position)
+        {
+            switch(position)
+            {
+                case "qb":
+                    return PositionEnum.qb;
+                case "rb":
+                    return PositionEnum.rb;
+                case "wr":
+                    return PositionEnum.wr;
+                case "te":
+                    return PositionEnum.te;
+                case "d":
+                default:
+                    return PositionEnum.def;
+            }
         }
     }
 }
