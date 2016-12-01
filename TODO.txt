@@ -4,10 +4,6 @@ streamline process
 
 data collection / analysis (keep all data leading to lineup generation)
 
-automating generating more lineups
-
-simulation project for lineup distribution
-
 data collection for simulation: std deviations, score -> winnings history
 
 possible data sites to look into:
@@ -16,5 +12,14 @@ https://github.com/BurntSushi/nfldb (nfldb python)
 http://www.pro-football-reference.com/
 http://rotoguru1.com/cgi-bin/fyday.pl?game=fd
 
-I have to read this:
-https://arxiv.org/pdf/1604.01455v2.pdf
+correlation in simulations (would likely favor stacking)
+have data that suggest .4 correlation coeff between QB/WR1, could probably just hardcode this for a set of qb/wr pairs and use R lib here:
+http://stats.stackexchange.com/questions/15011/generate-a-random-variable-with-a-defined-correlation-to-an-existing-variable
+http://www.rcpp.org/
+Would probably slow down simulation a bit more?
+How much value do we get here?
+
+optimizations/code cleanup
+
+backtest process
+
