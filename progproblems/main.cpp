@@ -28,7 +28,7 @@
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 1000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 50000
+#define RANDOM_SET_COUNT 100000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 13
 // number of pools to generate
