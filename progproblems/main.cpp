@@ -30,9 +30,9 @@
 // number of random lineup sets to select
 #define RANDOM_SET_COUNT 50000
 // number of lineups we want to select from total pool
-#define TARGET_LINEUP_COUNT 13
+#define TARGET_LINEUP_COUNT 50
 // number of pools to generate
-#define NUM_ITERATIONS_OWNERSHIP 13
+#define NUM_ITERATIONS_OWNERSHIP 50
 #define STOCHASTIC_OPTIMIZER_RUNS 50
 
 using namespace concurrency;
@@ -1790,6 +1790,8 @@ void lineupSelector(const string lineupsFile, const string playersFile)
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
 
+    auto start = chrono::steady_clock::now();
+
     default_random_engine generator(seed1);
     vector<vector<uint8_t>> allLineups = parseLineups(lineupsFile, playerIndices);
 
@@ -1804,10 +1806,12 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     // choose set
     // do random for now, randomly select set then run simulation
     float bestValue = 0.f;
-    vector<vector<uint8_t>> bestSet;
+    lineup_set bestSet;
+    bestSet.ev = 0.f;
+    bestSet.stdev = 50000.f;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
-        vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
+        /*vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
         float value;
         float ev;
         tie(value, ev) = runSimulation(set, p);
@@ -1816,16 +1820,28 @@ void lineupSelector(const string lineupsFile, const string playersFile)
             bestValue = value;
             bestSet = set;
             cout << bestValue << endl;
+        }*/
+
+        lineup_set set = { getRandomSet(starterSet, allLineups, generator), 0, 0 };
+        tie(set.ev, set.stdev) = runSimulation(set.set, p);
+        if (set.getSharpe() > bestSet.getSharpe())
+        {
+            bestSet = set;
+            cout << set.ev << ", " << set.getSharpe() << endl;
         }
     }
+
+    auto end = chrono::steady_clock::now();
+    auto diff = end - start;
+    double msTime = chrono::duration <double, milli>(diff).count();
 
     // output bestset
     ofstream myfile;
     myfile.open("outputset.csv");
-
-    myfile << bestValue;
+    myfile << msTime << "ms" << endl;
+    myfile << bestSet.ev << "," << bestSet.getSharpe();
     myfile << endl;
-    for (auto& lineup : bestSet)
+    for (auto& lineup : bestSet.set)
     {
         for (auto& x : lineup)
         {
@@ -1921,7 +1937,7 @@ lineup_set determineOwnership()
     // 
 
     // iterations
-    int iterations = 4;
+    int iterations = 5;
     lineup_set bestset;
     bestset.ev = 0;
     bestset.stdev = 500000.f;
