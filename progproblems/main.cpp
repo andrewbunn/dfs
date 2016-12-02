@@ -24,15 +24,15 @@
 #include "xorshift.h"
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 10
+#define LINEUPCOUNT 2000
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 1000
+#define SIMULATION_COUNT 20000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 50000
+#define RANDOM_SET_COUNT 100000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 50
 // number of pools to generate
-#define NUM_ITERATIONS_OWNERSHIP 50
+#define NUM_ITERATIONS_OWNERSHIP 100
 #define STOCHASTIC_OPTIMIZER_RUNS 50
 
 using namespace concurrency;
@@ -1517,8 +1517,10 @@ struct lineup_set
     float stdev;
     float getSharpe()
     {
-        return (ev - (10 * TARGET_LINEUP_COUNT)) / stdev;
+        return (ev - (10 * set.size())) / stdev;
     }
+    lineup_set() : ev(0.f), stdev(1.f) {}
+    lineup_set(vector<vector<uint8_t>>& s) : ev(0.f), stdev(1.f), set(s) {}
 };
 
 bool operator<(const lineup_set& lhs, const lineup_set& rhs)
@@ -1659,7 +1661,7 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
     vector<lineup_set> bestSharpeResults;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
-        lineup_set set = { getTargetSet(allLineups, generator), 0, 0 };
+        lineup_set set(getTargetSet(allLineups, generator));
         tie(set.ev, set.stdev) = runSimulation(set.set, p);
 
         if (set.getSharpe() > bestSharpe)
@@ -1807,8 +1809,6 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     // do random for now, randomly select set then run simulation
     float bestValue = 0.f;
     lineup_set bestSet;
-    bestSet.ev = 0.f;
-    bestSet.stdev = 50000.f;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         /*vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
@@ -1822,7 +1822,7 @@ void lineupSelector(const string lineupsFile, const string playersFile)
             cout << bestValue << endl;
         }*/
 
-        lineup_set set = { getRandomSet(starterSet, allLineups, generator), 0, 0 };
+        lineup_set set(getRandomSet(starterSet, allLineups, generator));
         tie(set.ev, set.stdev) = runSimulation(set.set, p);
         if (set.getSharpe() > bestSet.getSharpe())
         {
@@ -1842,6 +1842,86 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     myfile << bestSet.ev << "," << bestSet.getSharpe();
     myfile << endl;
     for (auto& lineup : bestSet.set)
+    {
+        for (auto& x : lineup)
+        {
+            myfile << p[x].name;
+            myfile << ",";
+        }
+        myfile << endl;
+    }
+
+    myfile.close();
+}
+
+void greedyLineupSelector()
+{
+    vector<Player> p = parsePlayers("players.csv");
+    // create map of player -> index for lineup parser
+    unordered_map<string, uint8_t> playerIndices;
+    // for now just use same std dev
+    for (auto& x : p)
+    {
+        playerIndices.emplace(x.name, x.index);
+    }
+
+    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+
+    auto start = chrono::steady_clock::now();
+
+    int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
+
+    default_random_engine generator(seed1);
+
+        vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
+
+        /*
+    vector<vector<vector<uint8_t>>> allLineups(totalSets);
+    for (int i = 0; i < totalSets; i++)
+    {
+        ostringstream stream;
+        stream << "output-" << i << ".csv";
+        allLineups[i] = parseLineups(stream.str(), playerIndices);
+    }
+    */
+
+    // choose lineup that maximizes objective
+    // iteratively add next lineup that maximizes objective.
+    lineup_set bestset;
+    for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
+    {
+        lineup_set set = bestset;
+        // can optimize to remove lineup from set, but pretty minimal
+        //for (auto & lineupbucket : allLineups)
+        {
+            //for (auto & lineup : lineupbucket)
+            for (auto & lineup : allLineups)
+            {
+                set.set.push_back(lineup);
+                tie(set.ev, set.stdev) = runSimulation(set.set, p);
+                if (set.getSharpe() > bestset.getSharpe())
+                {
+                    bestset = set;
+                }
+                set.set.erase(set.set.end() - 1);
+            }
+        }
+        cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << flush;
+    }
+
+    cout << endl;
+
+    auto end = chrono::steady_clock::now();
+    auto diff = end - start;
+    double msTime = chrono::duration <double, milli>(diff).count();
+
+    // output bestset
+    ofstream myfile;
+    myfile.open("outputset.csv");
+    myfile << msTime << "ms" << endl;
+    myfile << bestset.ev << "," << bestset.getSharpe();
+    myfile << endl;
+    for (auto& lineup : bestset.set)
     {
         for (auto& x : lineup)
         {
@@ -2302,6 +2382,11 @@ int main(int argc, char* argv[]) {
                 playersFile = "outputsetsharpe.csv";
             }
             evaluateScore(playersFile);
+        }
+
+        if (strcmp(argv[1], "greedyselect") == 0)
+        {
+            greedyLineupSelector();
         }
     }
     return 0;
