@@ -23,3 +23,7 @@ optimizations/code cleanup
 
 backtest process
 
+New idea for "lineup pool generator"
+For "pool" players, set price == net cost so none are favored over the others (problem with this is other places with better value will be overvalued, but their value has to be really high)
+output X lineups, should have lots of combinations of those players, can use that pool for lineup select optimizations
+
