@@ -22,6 +22,45 @@
 #include <numeric>
 #include <bitset>
 #include "xorshift.h"
+#include "test.h"
+
+#include "lcg.h"
+#include <cassert>
+#include <cmath>
+
+__m256 xorshift128plus_avx2(__m256i &state0, __m256i &state1)
+{
+    __m256i s1 = state0;
+    const __m256i s0 = state1;
+    state0 = s0;
+    s1 = _mm256_xor_si256(s1, _mm256_slli_epi64(s1, 23));
+    state1 = _mm256_xor_si256(_mm256_xor_si256(_mm256_xor_si256(s1, s0),
+        _mm256_srli_epi64(s1, 18)),
+        _mm256_srli_epi64(s0, 5));
+
+    __m256i u = _mm256_add_epi64(state1, s0);
+    __m256 f = _mm256_sub_ps(_mm256_castsi256_ps(u), *(__m256*)_ps256_1);
+    return f;
+    //return _mm256_add_epi64(state1, s0);
+}
+
+static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r) {
+    assert(count % 16 == 0);
+    const __m256 twopi = _mm256_set1_ps(2.0f * 3.14159265358979323846f);
+    const __m256 one = _mm256_set1_ps(1.0f);
+    const __m256 minustwo = _mm256_set1_ps(-2.0f);
+
+    for (size_t i = 0; i < count; i += 16) {
+        __m256 u1 = _mm256_sub_ps(one, r()); // [0, 1) -> (0, 1]
+        __m256 u2 = r();
+        __m256 radius = _mm256_sqrt_ps(_mm256_mul_ps(minustwo, log256_ps(u1)));
+        __m256 theta = _mm256_mul_ps(twopi, u2);
+        __m256 sintheta, costheta;
+        sincos256_ps(theta, &sintheta, &costheta);
+        _mm256_store_ps(&data[i], _mm256_mul_ps(radius, costheta));
+        _mm256_store_ps(&data[i + 8], _mm256_mul_ps(radius, sintheta));
+    }
+}
 
 // number of lineups to generate in optimizen - TODO make parameter
 #define LINEUPCOUNT 2000
@@ -1255,6 +1294,11 @@ void importProjections(string fileout, bool tweaked, bool tweakAndDiff)
 // use some backdata to calculate lineup score -> prize winnings
 // average prize winnings over all simulations to determine EV of that lineup set
 
+// convert boxmuller impl:
+// mean 0, std 1 -> boxmuller * std + mean
+// per threaD? have table of generated values from player's distributation
+// so 
+
 template <typename T>
 inline float generateScore(uint8_t player, const vector<Player>& allPlayers, T& generator)
 {
@@ -1390,12 +1434,27 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers](const float&)
     {
         static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-        static thread_local mt19937 generatorTh(seed1);
+        //static thread_local mt19937 generatorTh(seed1);
         //static thread_local xor128 generatorTh(seed1);
+        static thread_local random_device rdev;
+        //static thread_local __m256i s0 = _mm256_setr_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
+        //static thread_local __m256i s1 = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+
 
         // only 64 players considered? need universal index
         // map of index -> score
+
+        alignas(256) array<float, 64> playerStandardNormals = {};
+        normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
         array<float, 64> playerScores = {};
+        for (int i = 0; i < allPlayers.size(); i++)
+        {
+            const Player& p = allPlayers[i];
+            // need to research what std dev should be
+            //return p.distribution(generator);
+            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+        }
         // keep track of times we win high placing since that excludes additional same placements
 
         array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
@@ -1407,10 +1466,11 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             float lineupScore = 0.f;
             for (auto& player : lineup)
             {
+                /*
                 if (playerScores[player] == 0)
                 {
                     playerScores[player] = generateScore(player, allPlayers, generatorTh);
-                }
+                }*/
                 lineupScore += playerScores[player];
             }
             // lookup score -> winnings
@@ -1906,7 +1966,15 @@ void greedyLineupSelector()
                 set.set.erase(set.set.end() - 1);
             }
         }
-        cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << flush;
+        auto end = chrono::steady_clock::now();
+        auto diff = end - start;
+        double msTime = chrono::duration <double, milli>(diff).count();
+        cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
+
+        if (i == 2)
+        {
+            break;
+        }
     }
 
     cout << endl;

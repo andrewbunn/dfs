@@ -18,9 +18,24 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="boxmuller_avx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xorshift.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="lcg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="avx_mathfun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sse_mathfun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="test.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
