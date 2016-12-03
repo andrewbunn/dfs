@@ -1306,6 +1306,20 @@ inline float generateScore(uint8_t player, const vector<Player>& allPlayers, T& 
     // need to research what std dev should be
     //return p.distribution(generator);
     normal_distribution<float> distribution(p.proj, p.stdDev);
+
+    // correlated normal dist
+    // auto theta = acos(0.4);
+    // cbind (two cols? where col1 = random results of player 1, col2 = random results of player 2
+    // If center is TRUE then centering is done by subtracting the column means (omitting NAs) of x from their corresponding columns, and if center is FALSE, no centering is done.
+    // so each col subtracts mean
+    // auto Id = diag(n) (nxn matrix with diagonal = 1 where n is number of rows? from above)
+
+    // basically we would have vector of random samples for player 1 and player 2, input into R code which would modify second vector
+    // how will parallel code use this?
+    // or this math: x2 = 0.4*z1 + sqrt(1-.4^2)*z2
+    // .4z1 + 0.91651513899 * z2 = correlated standard normal
+    // Y = r*X
+
     return distribution(generator);
 }
 
@@ -1437,9 +1451,9 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         //static thread_local mt19937 generatorTh(seed1);
         //static thread_local xor128 generatorTh(seed1);
         static thread_local random_device rdev;
-        //static thread_local __m256i s0 = _mm256_setr_epi32(1, 2, 3, 4, 5, 6, 7, 8);
         static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
-        //static thread_local __m256i s1 = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+        static thread_local __m256i s0 = _mm256_setr_epi32(1, 2, 3, 4, 5, 6, 7, 8);
+        static thread_local __m256i s1 = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
 
 
         // only 64 players considered? need universal index
@@ -1453,6 +1467,7 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             const Player& p = allPlayers[i];
             // need to research what std dev should be
             //return p.distribution(generator);
+            // .4z1 + 0.91651513899 * z2 = correlated standard normal
             playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
         }
         // keep track of times we win high placing since that excludes additional same placements
