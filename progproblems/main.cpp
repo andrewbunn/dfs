@@ -63,9 +63,9 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 2000
+#define LINEUPCOUNT 200000
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 20000
+#define SIMULATION_COUNT 40000
 // number of random lineup sets to select
 #define RANDOM_SET_COUNT 100000
 // number of lineups we want to select from total pool
@@ -489,9 +489,10 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
     else
     {
-        lineup_list bestLineups;
-        bestLineups.reserve(2 * LINEUPCOUNT);
-        bestLineups.push_back(oldLineup);
+        //lineup_list bestLineups;
+        //bestLineups.reserve(2 * LINEUPCOUNT);
+        //bestLineups.push_back(oldLineup);
+        lineup_list bestLineups(1, oldLineup);
         for (int i = startPos; i < players[pos].size(); i++)
         {
             const Player& p = players[pos][i];
@@ -500,6 +501,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
             {
                 if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
                 {
+                    const int originalLen = bestLineups.size();
                     // optimization to inline last call
                     if (pos == 8)
                     {
@@ -510,7 +512,12 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
                         lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : 0, isWR ? i + 1 : 0, skipPositionSet);
                         bestLineups.insert(bestLineups.end(), lineups.begin(), lineups.end());
                     }
+                    // in place merge is much faster for larger sets
+#if LINEUPCOUNT > 10
+                    inplace_merge(bestLineups.begin(), bestLineups.begin() + originalLen, bestLineups.end());
+#else
                     sort(bestLineups.begin(), bestLineups.end());
+#endif
                     unique(bestLineups.begin(), bestLineups.end());
 
                     if (bestLineups.size() > LINEUPCOUNT)
@@ -1452,12 +1459,6 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         //static thread_local xor128 generatorTh(seed1);
         static thread_local random_device rdev;
         static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
-        static thread_local __m256i s0 = _mm256_setr_epi32(1, 2, 3, 4, 5, 6, 7, 8);
-        static thread_local __m256i s1 = _mm256_set_epi32(1, 2, 3, 4, 5, 6, 7, 8);
-
-
-        // only 64 players considered? need universal index
-        // map of index -> score
 
         alignas(256) array<float, 64> playerStandardNormals = {};
         normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
@@ -1502,6 +1503,57 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     // sqrt (1/n * [(val - mean)^2 + ]
 
 
+    float expectedValue = winningsTotal / SIMULATION_COUNT;
+    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
+    {
+        // variation below target:
+        float diff = val - 10 * TARGET_LINEUP_COUNT;  //(val - expectedValue);
+        if (diff < 0)
+        {
+            return diff * diff;
+        }
+        else
+        {
+            return 0.0f;
+        }
+    });
+
+    float stdDev = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+    stdDev = sqrt(stdDev / SIMULATION_COUNT);
+
+    return make_pair(expectedValue, stdDev);
+}
+
+pair<float, float> runSimulationSlow(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers)
+{
+    float winningsTotal = 0.f;
+    float runningAvg = 0.f;
+    bool converged = false;
+    static vector<float> simulationResults(SIMULATION_COUNT);
+    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers](const float&)
+    {
+        static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+        static thread_local mt19937 generatorTh(seed1);
+        array<float, 64> playerScores = {};
+        for (int i = 0; i < allPlayers.size(); i++)
+        {
+            playerScores[i] = generateScore(i, allPlayers, generatorTh);
+        }
+
+        array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
+        float winnings = 0.f;
+        for (auto& lineup : lineups)
+        {
+            float lineupScore = 0.f;
+            for (auto& player : lineup)
+            {
+                lineupScore += playerScores[player];
+            }
+            winnings += determineWinnings(lineupScore, placementCount);
+        }
+        return winnings;
+    });
+    winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
     float expectedValue = winningsTotal / SIMULATION_COUNT;
     transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
     {
@@ -1948,7 +2000,7 @@ void greedyLineupSelector()
 
     default_random_engine generator(seed1);
 
-        vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
+    vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
 
         /*
     vector<vector<vector<uint8_t>>> allLineups(totalSets);
@@ -1978,7 +2030,6 @@ void greedyLineupSelector()
                 {
                     bestset = set;
                 }
-                set.set.erase(set.set.end() - 1);
             }
         }
         auto end = chrono::steady_clock::now();
