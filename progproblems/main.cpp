@@ -1460,9 +1460,9 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         static thread_local random_device rdev;
         static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
 
-        alignas(256) array<float, 64> playerStandardNormals = {};
+        alignas(256) array<float, 64> playerStandardNormals;
         normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
-        array<float, 64> playerScores = {};
+        array<float, 64> playerScores;
         for (int i = 0; i < allPlayers.size(); i++)
         {
             const Player& p = allPlayers[i];
@@ -1472,6 +1472,10 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
 
             // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
             playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
         }
         // keep track of times we win high placing since that excludes additional same placements
 
@@ -1482,7 +1486,7 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         for (auto& lineup : lineups)
         {
             float lineupScore = 0.f;
-            for (auto& player : lineup)
+            for (auto player : lineup)
             {
                 lineupScore += playerScores[player];
             }
@@ -1531,7 +1535,7 @@ pair<float, float> runSimulationSlow(const vector<vector<uint8_t>>& lineups, con
     {
         static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
         static thread_local mt19937 generatorTh(seed1);
-        array<float, 64> playerScores = {};
+        array<float, 64> playerScores;
         for (int i = 0; i < allPlayers.size(); i++)
         {
             playerScores[i] = generateScore(i, allPlayers, generatorTh);
@@ -2027,6 +2031,7 @@ void greedyLineupSelector()
                 {
                     bestset = set;
                 }
+                set.set.erase(set.set.end() - 1);
             }
         }
         auto end = chrono::steady_clock::now();
