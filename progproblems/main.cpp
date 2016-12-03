@@ -63,7 +63,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 10000
+#define LINEUPCOUNT 50000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -2073,6 +2073,12 @@ void greedyLineupSelector()
         auto diff = end - start;
         double msTime = chrono::duration <double, milli>(diff).count();
         cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
+
+        if (i == 33)
+        {
+            // hack to deal with djs over ownership right now
+            allLineups = parseLineups("output-nodj.csv", playerIndices);
+        }
     }
 
     cout << endl;
