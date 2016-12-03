@@ -63,9 +63,9 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 200000
+#define LINEUPCOUNT 100000
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 40000
+#define SIMULATION_COUNT 20000
 // number of random lineup sets to select
 #define RANDOM_SET_COUNT 100000
 // number of lineups we want to select from total pool
@@ -1469,6 +1469,8 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             // need to research what std dev should be
             //return p.distribution(generator);
             // .4z1 + 0.91651513899 * z2 = correlated standard normal
+
+            // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
             playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
         }
         // keep track of times we win high placing since that excludes additional same placements
@@ -1482,11 +1484,6 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             float lineupScore = 0.f;
             for (auto& player : lineup)
             {
-                /*
-                if (playerScores[player] == 0)
-                {
-                    playerScores[player] = generateScore(player, allPlayers, generatorTh);
-                }*/
                 lineupScore += playerScores[player];
             }
             // lookup score -> winnings
