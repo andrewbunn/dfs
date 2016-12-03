@@ -246,6 +246,21 @@ vector<string> parseNames(string filename)
     return result;
 }
 
+vector<pair<string, string>> parseCorr(string filename)
+{
+    vector<pair<string, string>> result;
+    ifstream       file(filename);
+    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+    int count = 0;
+    while (tokens.size() == 2)
+    {
+        result.emplace_back(tokens[0], tokens[1]);
+        tokens = getNextLineAndSplitIntoTokens(file);
+    }
+
+    return result;
+}
+
 vector<Player> parsePlayers(string filename)
 {
     vector<Player> result;
@@ -1446,13 +1461,13 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
 // 
 //
 
-pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers)
+pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
 {
     float winningsTotal = 0.f;
     float runningAvg = 0.f;
     bool converged = false;
     static vector<float> simulationResults(SIMULATION_COUNT);
-    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers](const float&)
+    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
     {
         static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
         //static thread_local mt19937 generatorTh(seed1);
@@ -1463,12 +1478,29 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         alignas(256) array<float, 64> playerStandardNormals;
         normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
         array<float, 64> playerScores;
-        for (int i = 0; i < allPlayers.size(); i++)
+        int i;
+        for (i = 0; i < corrIdx; i++)
         {
             const Player& p = allPlayers[i];
-            // need to research what std dev should be
-            //return p.distribution(generator);
             // .4z1 + 0.91651513899 * z2 = correlated standard normal
+            if (i % 2 == 0)
+            {
+                playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            }
+            else
+            {
+                float corrZ = .4 * playerStandardNormals[i- 1] + 0.91651513899 * playerStandardNormals[i];
+                playerScores[i] = p.proj + (p.stdDev * corrZ);
+            }
+            
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
+        }
+        for (; i < allPlayers.size(); i++)
+        {
+            const Player& p = allPlayers[i];
 
             // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
             playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
@@ -1790,7 +1822,7 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         lineup_set set(getTargetSet(allLineups, generator));
-        tie(set.ev, set.stdev) = runSimulation(set.set, p);
+        tie(set.ev, set.stdev) = runSimulation(set.set, p, 0);
 
         if (set.getSharpe() > bestSharpe)
         {
@@ -1939,19 +1971,8 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     lineup_set bestSet;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
-        /*vector<vector<uint8_t>> set = getRandomSet(starterSet, allLineups, generator);
-        float value;
-        float ev;
-        tie(value, ev) = runSimulation(set, p);
-        if (value > bestValue)
-        {
-            bestValue = value;
-            bestSet = set;
-            cout << bestValue << endl;
-        }*/
-
         lineup_set set(getRandomSet(starterSet, allLineups, generator));
-        tie(set.ev, set.stdev) = runSimulation(set.set, p);
+        tie(set.ev, set.stdev) = runSimulation(set.set, p, 0);
         if (set.getSharpe() > bestSet.getSharpe())
         {
             bestSet = set;
@@ -1985,22 +2006,37 @@ void lineupSelector(const string lineupsFile, const string playersFile)
 void greedyLineupSelector()
 {
     vector<Player> p = parsePlayers("players.csv");
-    // create map of player -> index for lineup parser
+    vector<pair<string, string>> corr = parseCorr("corr.csv");
+    int corrIdx = 0;
+    for (auto & s : corr)
+    {
+        // move those entries to the start of the array
+        // only when we have the pair
+        auto it = find_if(p.begin(), p.end(), [&s](Player& p)
+        {
+            return p.name == s.first;
+        });
+        auto itC = find_if(p.begin(), p.end(), [&s](Player& p)
+        {
+            return p.name == s.second;
+        });
+        if (it != p.end() && itC != p.end())
+        {
+            iter_swap(it, p.begin() + corrIdx++);
+            iter_swap(itC, p.begin() + corrIdx++);
+        }
+    }
+
     unordered_map<string, uint8_t> playerIndices;
-    // for now just use same std dev
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
     }
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-
     auto start = chrono::steady_clock::now();
 
     int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
-
-    default_random_engine generator(seed1);
-
     vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
 
         /*
@@ -2019,14 +2055,13 @@ void greedyLineupSelector()
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
-        // can optimize to remove lineup from set, but pretty minimal
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
             for (auto & lineup : allLineups)
             {
                 set.set.push_back(lineup);
-                tie(set.ev, set.stdev) = runSimulation(set.set, p);
+                tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
                 if (set.getSharpe() > bestset.getSharpe())
                 {
                     bestset = set;
