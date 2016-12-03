@@ -1970,11 +1970,6 @@ void greedyLineupSelector()
         auto diff = end - start;
         double msTime = chrono::duration <double, milli>(diff).count();
         cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
-
-        if (i == 2)
-        {
-            break;
-        }
     }
 
     cout << endl;
