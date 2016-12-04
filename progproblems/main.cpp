@@ -63,7 +63,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 50000
+#define LINEUPCOUNT 100
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -533,8 +533,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
 #else
                     sort(bestLineups.begin(), bestLineups.end());
 #endif
-                    unique(bestLineups.begin(), bestLineups.end());
-
+                    bestLineups.erase(unique(bestLineups.begin(), bestLineups.end()), bestLineups.end());
                     if (bestLineups.size() > LINEUPCOUNT)
                     {
                         bestLineups.resize(LINEUPCOUNT);
@@ -2007,6 +2006,9 @@ void greedyLineupSelector()
 {
     vector<Player> p = parsePlayers("players.csv");
     vector<pair<string, string>> corr = parseCorr("corr.csv");
+
+    vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
+
     int corrIdx = 0;
     for (auto & s : corr)
     {
@@ -2028,9 +2030,15 @@ void greedyLineupSelector()
     }
 
     unordered_map<string, uint8_t> playerIndices;
+    unordered_map<uint8_t, int> playerCounts;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
+    }
+    vector<pair<uint8_t, float>> ownershipLimits;
+    for (auto& x : ownership)
+    {
+        ownershipLimits.emplace_back(playerIndices.find(x.first)->second, x.second);
     }
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
@@ -2074,11 +2082,51 @@ void greedyLineupSelector()
         double msTime = chrono::duration <double, milli>(diff).count();
         cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
 
+        // TODO:
+        // output current lineup
+        // rather than "enforced ownership" we should just have ownership caps
+        // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and work with new player set
+        for (auto x : bestset.set[bestset.set.size() - 1])
+        {
+            auto it = playerCounts.find(x);
+            if (it == playerCounts.end())
+            {
+                playerCounts.emplace(x, 1);
+            }
+            else
+            {
+                it->second++;
+            }
+        }
+
+        vector<string> playersToRemove;
+        for (auto & x : ownershipLimits)
+        {
+            auto it = playerCounts.find(x.first);
+            if (it != playerCounts.end())
+            {
+                float percentOwned = (float)it->second / (float)TARGET_LINEUP_COUNT;
+                if (percentOwned >= x.second)
+                {
+                    playersToRemove.push_back(p[x.first].name);
+                }
+            }
+        }
+
+        if (playersToRemove.size() > 0)
+        {
+            double msTime = 0;
+            lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+            saveLineupList(p, lineups, "output.csv", msTime);
+            allLineups = parseLineups("output.csv", playerIndices);
+        }
+        /*
         if (i == 33)
         {
             // hack to deal with djs over ownership right now
             allLineups = parseLineups("output-nodj.csv", playerIndices);
         }
+        */
     }
 
     cout << endl;
