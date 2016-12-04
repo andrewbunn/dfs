@@ -63,7 +63,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 100
+#define LINEUPCOUNT 60000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -493,7 +493,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
         {
             merged.insert(merged.end(), lineup.begin(), lineup.end());
             sort(merged.begin(), merged.end());
-            unique(merged.begin(), merged.end());
+            merged.erase(unique(merged.begin(), merged.end()), merged.end());
             if (merged.size() > LINEUPCOUNT)
             {
                 merged.resize(LINEUPCOUNT);
@@ -2024,7 +2024,11 @@ void greedyLineupSelector()
         });
         if (it != p.end() && itC != p.end())
         {
+            //int tempIdx = it->index;
+            //it->index = corrIdx;
+            swap(p[corrIdx].index, it->index);
             iter_swap(it, p.begin() + corrIdx++);
+            swap(p[corrIdx].index, itC->index);
             iter_swap(itC, p.begin() + corrIdx++);
         }
     }
@@ -2044,10 +2048,9 @@ void greedyLineupSelector()
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     auto start = chrono::steady_clock::now();
 
-    int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
-    vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
+    int totalSets = 2;// NUM_ITERATIONS_OWNERSHIP;// ownership.size();
+    //vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
 
-        /*
     vector<vector<vector<uint8_t>>> allLineups(totalSets);
     for (int i = 0; i < totalSets; i++)
     {
@@ -2055,18 +2058,21 @@ void greedyLineupSelector()
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
     }
-    */
+    
 
+    ofstream myfile;
+    myfile.open("outputset.csv");
     // choose lineup that maximizes objective
     // iteratively add next lineup that maximizes objective.
     lineup_set bestset;
+    int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
-            for (auto & lineup : allLineups)
+            for (auto & lineup : allLineups[z])
             {
                 set.set.push_back(lineup);
                 tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
@@ -2080,13 +2086,13 @@ void greedyLineupSelector()
         auto end = chrono::steady_clock::now();
         auto diff = end - start;
         double msTime = chrono::duration <double, milli>(diff).count();
-        cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
+        cout << "Lineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << endl;
 
         // TODO:
         // output current lineup
         // rather than "enforced ownership" we should just have ownership caps
         // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and work with new player set
-        for (auto x : bestset.set[bestset.set.size() - 1])
+       /* for (auto x : bestset.set[bestset.set.size() - 1])
         {
             auto it = playerCounts.find(x);
             if (it == playerCounts.end())
@@ -2119,7 +2125,19 @@ void greedyLineupSelector()
             lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
             saveLineupList(p, lineups, "output.csv", msTime);
             allLineups = parseLineups("output.csv", playerIndices);
+        }*/
+
+        if (i == 30)
+        {
+            z = 1;
         }
+
+        for (auto& x : bestset.set[bestset.set.size() - 1])
+        {
+            cout << p[x].name;
+            cout << ",";
+        }
+        cout << endl;
         /*
         if (i == 33)
         {
@@ -2136,8 +2154,6 @@ void greedyLineupSelector()
     double msTime = chrono::duration <double, milli>(diff).count();
 
     // output bestset
-    ofstream myfile;
-    myfile.open("outputset.csv");
     myfile << msTime << "ms" << endl;
     myfile << bestset.ev << "," << bestset.getSharpe();
     myfile << endl;
