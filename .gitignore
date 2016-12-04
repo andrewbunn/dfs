@@ -13,6 +13,8 @@
 
 # csv in progproblems #
 progproblems/*.csv
+!progproblems/corr.csv
+!progproblems/ownership.csv
 
 Release/*
 Debug/*
