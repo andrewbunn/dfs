@@ -1847,7 +1847,7 @@ void greedyLineupSelector()
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
-        bestset.ev = 0.f;
+        bestset.ev = 0.f; // reset so we accept new lineup
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
