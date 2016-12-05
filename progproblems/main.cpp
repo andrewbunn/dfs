@@ -104,45 +104,6 @@ struct Player {
     Player() {}
 };
 
-struct Players {
-    array<int, 9> p;
-    array<int, 5> posCounts;
-    int totalCount;
-    float value;
-    bool hasFlex;
-
-    inline void addPlayer(int pos, float proj, int index)
-    {
-            posCounts[pos]++;
-            p[totalCount++] = index;
-            value += proj;
-    }
-
-    bool tryAddPlayer(int pos, float proj, int index)
-    {
-        int diff = posCounts[pos] - PositionCount[pos];
-        if (diff < 0)
-        {
-            addPlayer(pos, proj, index);
-            return true;
-        }
-
-        if (hasFlex || pos == 0 || pos == 4 || diff > 1)
-        {
-            return false;
-        }
-
-        addPlayer(pos, proj, index);
-        hasFlex = true;
-        return true;
-    }
-
-    Players() : totalCount(0), value(0), /*costOfUnfilledPositions(90),*/ hasFlex(false)
-    {
-        posCounts.fill(0);
-    }
-};
-
 struct Players2 {
     uint64_t bitset;
     array<uint8_t, 5> posCounts;
@@ -373,69 +334,7 @@ vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint
     return result;
 }
 
-// can transpose players of same type
-Players2 knapsackPositions(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players)
-{
-    if (pos >= 9)
-    {
-        return oldLineup;
-    }
-
-    Players2 bestLineup = oldLineup;
-    auto loop = [&](const Player& p)
-    {
-        Players2 currentLineup = oldLineup;
-        if (p.cost <= budget)
-        {
-            if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
-            {
-                return knapsackPositions(budget - p.cost, pos + 1, currentLineup, players);
-            }
-        }
-        return currentLineup;
-    };
-    if (pos <= 2)
-    {
-        //parallel_for(size_t(0), players[pos].size(), loop);
-        // could parallel transform each to a "lineup", keep best lineup
-        vector<Players2> lineupResults(players[pos].size());
-        //parallel_for_each(begin(players[pos]), end(players[pos]), loop);
-        parallel_transform(begin(players[pos]), end(players[pos]), begin(lineupResults), loop);
-
-        for (auto lineup : lineupResults)
-        {
-            if (lineup.value > bestLineup.value)
-            {
-                bestLineup = lineup;
-            }
-        }
-    }
-    else
-    {
-
-        for (int i = 0; i < players[pos].size(); i++)
-        {
-            const Player& p = players[pos][i];
-            Players2 currentLineup = oldLineup;
-            if (p.cost <= budget)
-            {
-                if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
-                {
-                    Players2 lineup = knapsackPositions(budget - p.cost, pos + 1, currentLineup, players);
-                    if (lineup.value > bestLineup.value)
-                    {
-                        bestLineup = lineup;
-                    }
-                }
-            }
-        }
-    }
-    return bestLineup;
-}
-
 typedef vector<Players2> lineup_list;
-
-
 
 // can transpose players of same type
 lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
@@ -545,27 +444,6 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
 }
 
-Players2 generateLineup(vector<Player>& p)
-{
-    vector<vector<Player>> playersByPos(9);
-    for (int i = 0; i < 9; i++)
-    {
-        for (auto& pl : p)
-        {
-            if (pl.pos == slots[i])
-            {
-                playersByPos[i].push_back(pl);
-            }
-            else if (slots[i] == 5 && (pl.pos == 1 || pl.pos == 2 || pl.pos == 3))
-            {
-                playersByPos[i].push_back(pl);
-            }
-        }
-    }
-
-    return knapsackPositions(100, 0, Players2(), playersByPos);
-}
-
 lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime)
 {
     auto start = chrono::steady_clock::now();
@@ -651,43 +529,6 @@ lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers
     auto diff = end - start;
     msTime = chrono::duration <double, milli>(diff).count();
     return output;
-}
-
-void runPlayerOptimizer(string filein, string fileout)
-{
-    vector<Player> p = parsePlayers(filein);
-    auto start = chrono::steady_clock::now();
-
-    Players2 lineup = generateLineup(p);
-    auto end = chrono::steady_clock::now();
-    auto diff = end - start;
-
-    ofstream myfile;
-    myfile.open(fileout);
-    myfile << chrono::duration <double, milli>(diff).count() << " ms" << endl;
-
-        int totalcost = 0;
-        uint64_t bitset = lineup.bitset;
-        int count = 0;
-        for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
-        {
-            if (bitset & 1 == 1)
-            {
-                count++;
-                myfile << p[i].name;
-                totalcost += p[i].cost;
-                myfile << endl;
-            }
-            bitset = bitset >> 1;
-        }
-
-        myfile << lineup.value;
-        myfile << endl;
-        myfile << totalcost;
-        myfile << endl;
-        myfile << endl;
-
-    myfile.close();
 }
 
 void saveLineupList(vector<Player>& p, lineup_list& lineups, string fileout, double msTime)
@@ -1314,33 +1155,13 @@ void importProjections(string fileout, bool tweaked, bool tweakAndDiff)
 // randomly generate score for all involved players, then determine total prize winnings based on scores of each lineup
 // use some backdata to calculate lineup score -> prize winnings
 // average prize winnings over all simulations to determine EV of that lineup set
-
-// convert boxmuller impl:
-// mean 0, std 1 -> boxmuller * std + mean
-// per threaD? have table of generated values from player's distributation
-// so 
-
 template <typename T>
 inline float generateScore(uint8_t player, const vector<Player>& allPlayers, T& generator)
 {
     const Player& p = allPlayers[player];
-    // need to research what std dev should be
-    //return p.distribution(generator);
     normal_distribution<float> distribution(p.proj, p.stdDev);
 
-    // correlated normal dist
-    // auto theta = acos(0.4);
-    // cbind (two cols? where col1 = random results of player 1, col2 = random results of player 2
-    // If center is TRUE then centering is done by subtracting the column means (omitting NAs) of x from their corresponding columns, and if center is FALSE, no centering is done.
-    // so each col subtracts mean
-    // auto Id = diag(n) (nxn matrix with diagonal = 1 where n is number of rows? from above)
-
-    // basically we would have vector of random samples for player 1 and player 2, input into R code which would modify second vector
-    // how will parallel code use this?
-    // or this math: x2 = 0.4*z1 + sqrt(1-.4^2)*z2
     // .4z1 + 0.91651513899 * z2 = correlated standard normal
-    // Y = r*X
-
     return distribution(generator);
 }
 
@@ -1439,8 +1260,9 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
     }
     return value;
 }
+
 // ideas for improvements:
-// customized deviations
+// customized deviations - non-normal distributions
 // account for contest types/costs/prizes
 // estimate thresholds specific to a given week? (how much obvious value is out there?)
 //
@@ -1448,18 +1270,11 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
 // then generate other sets, how do we incorporate those together?
 // we could enforce % of lineups selected from each of those sets but how they would get selected/weighted ultimately depends
 // on projections we use in simulation
-// essentially, I want to somehow indicate that i want to significantly limit exposure to some players (eg. marshall)
-// so lets say marshall is ~10% target. marshall allowed lineups are chosen 10% of time in set selection! done
-// so we do our lineup generation in similar process to what we always did, but rather than just getting one lineup, we generate tons, and use those for simulation
-// and enforce our "asset mix"
 // then we need more data to drive our "asset mix"
 //
 // then in simulation, we can track things like variance of a set as well and select "best mix" based on more than just EV.
 //
 // other ways to improve: estimate cutoffs more accurately for a given week based on ownership? and then the random values we generate for a simulation affect those lines based on ownership
-// 
-//
-
 pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
 {
     float winningsTotal = 0.f;
@@ -1469,8 +1284,6 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
     {
         static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-        //static thread_local mt19937 generatorTh(seed1);
-        //static thread_local xor128 generatorTh(seed1);
         static thread_local random_device rdev;
         static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
 
@@ -1509,6 +1322,7 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             }
         }
         // keep track of times we win high placing since that excludes additional same placements
+        // the problem with this is that generally we enter multiple contests, need to factor that in
 
         array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
         // create map of player -> generated score
@@ -1523,18 +1337,16 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             }
             // lookup score -> winnings
             // need to account for my own entries for winnings
-            winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/, placementCount);
+            winnings += determineWinnings(lineupScore, placementCount);
         }
         return winnings;
     });
 
     // we can calculate std dev per lineup and calculate risk of whole set
-    // i guess just using simulated variance of set is fine for now
     winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+
     // calculate std dev here:
     // sqrt (1/n * [(val - mean)^2 + ]
-
-
     float expectedValue = winningsTotal / SIMULATION_COUNT;
     transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue, &lineups](float& val)
     {
@@ -1702,8 +1514,6 @@ void outputBestResults(vector<Player>& p, vector<lineup_set>& bestResults)
     ofstream myfile;
     myfile.open("outputset.csv");
 
-    //myfile << bestValue;
-    //myfile << endl;
     for (auto& set : bestResults)
     {
         myfile << set.ev << "," << set.stdev << endl;
@@ -1754,22 +1564,6 @@ float calcEV(vector<Player>& p, vector<uint8_t>& lineup)
     });
 }
 
-void setFromIndices(const vector<uint16_t>& setIndices, const vector<vector<vector<uint8_t>>>& allLineups, lineup_set& set)
-{
-    for (int i = 0; i < setIndices.size(); i++)
-    {
-        set.set[i] = allLineups[setIndices[i]][0];
-    }
-}
-
-void getNextSet(vector<uint16_t>& setIndices, default_random_engine& generator)
-{
-    static uniform_int_distribution<int> distribution(0, TARGET_LINEUP_COUNT - 1);
-    static uniform_int_distribution<int> distributionIndices(0, NUM_ITERATIONS_OWNERSHIP - 1);
-    int i = distribution(generator);
-    setIndices[i] = distributionIndices(generator);
-}
-
 lineup_set lineupSelectorOwnership(const string ownershipFile, const string playersFile)
 {
     vector<Player> p = parsePlayers(playersFile);
@@ -1781,12 +1575,9 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
         playerIndices.emplace(x.name, x.index);
     }
 
-    //vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
-
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     default_random_engine generator(seed1);
 
-    //int totalSets = STOCHASTIC_OPTIMIZER_RUNS;
     int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
 
     vector<vector<vector<uint8_t>>> allLineups(totalSets);
@@ -1796,17 +1587,6 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
     }
-    /*
-    sort(allLineups.begin(), allLineups.end(), [&p](vector<vector<uint8_t>>& a, vector<vector<uint8_t>>& b)
-    {
-        return calcEV(p, a[0]) > calcEV(p, b[0]);
-    });
-
-    cout << calcEV(p, allLineups[0][0]) << endl;
-    */
-    // randomly pick a set -> if it will fit your requirements, pick a lineup
-    // so we want 10% of some players, remaining % contains none of those players
-    //= parseLineups(lineupsFile, playerIndices);
 
     // just shuffle and pull from sets
     // starterSet is just the first N lineups from all lineups which is the initialization of reservoir algorithm
@@ -2024,8 +1804,6 @@ void greedyLineupSelector()
         });
         if (it != p.end() && itC != p.end())
         {
-            //int tempIdx = it->index;
-            //it->index = corrIdx;
             swap(p[corrIdx].index, it->index);
             iter_swap(it, p.begin() + corrIdx++);
             swap(p[corrIdx].index, itC->index);
@@ -2049,15 +1827,15 @@ void greedyLineupSelector()
     auto start = chrono::steady_clock::now();
 
     int totalSets = 2;// NUM_ITERATIONS_OWNERSHIP;// ownership.size();
-    //vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
+    vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
 
-    vector<vector<vector<uint8_t>>> allLineups(totalSets);
+    /*vector<vector<vector<uint8_t>>> allLineups(totalSets);
     for (int i = 0; i < totalSets; i++)
     {
         ostringstream stream;
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
-    }
+    }*/
     
 
     ofstream myfile;
@@ -2073,7 +1851,7 @@ void greedyLineupSelector()
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
-            for (auto & lineup : allLineups[z])
+            for (auto & lineup : allLineups)
             {
                 set.set.push_back(lineup);
                 tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
@@ -2089,11 +1867,9 @@ void greedyLineupSelector()
         double msTime = chrono::duration <double, milli>(diff).count();
         cout << "Lineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << endl;
 
-        // TODO:
-        // output current lineup
         // rather than "enforced ownership" we should just have ownership caps
         // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and work with new player set
-       /* for (auto x : bestset.set[bestset.set.size() - 1])
+        for (auto x : bestset.set[bestset.set.size() - 1])
         {
             auto it = playerCounts.find(x);
             if (it == playerCounts.end())
@@ -2124,13 +1900,24 @@ void greedyLineupSelector()
         {
             double msTime = 0;
             lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-            saveLineupList(p, lineups, "output.csv", msTime);
-            allLineups = parseLineups("output.csv", playerIndices);
-        }*/
-
-        if (i == 30)
-        {
-            z = 1;
+            // faster to parse lineup_list to allLineups
+            allLineups.clear();
+            for (auto& lineup : lineups)
+            {
+                uint64_t bitset = lineup.bitset;
+                int count = 0;
+                vector<uint8_t> currentLineup;
+                for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
+                {
+                    if (bitset & 1 == 1)
+                    {
+                        count++;
+                        currentLineup.push_back((uint8_t)i);
+                    }
+                    bitset = bitset >> 1;
+                }
+                allLineups.push_back(currentLineup);
+            }
         }
 
         for (auto& x : bestset.set[bestset.set.size() - 1])
@@ -2139,13 +1926,6 @@ void greedyLineupSelector()
             cout << ",";
         }
         cout << endl;
-        /*
-        if (i == 33)
-        {
-            // hack to deal with djs over ownership right now
-            allLineups = parseLineups("output-nodj.csv", playerIndices);
-        }
-        */
     }
 
     cout << endl;
@@ -2429,29 +2209,6 @@ void evaluateScore(string filename)
 int main(int argc, char* argv[]) {
     if (argc > 1)
     {
-        if (strcmp(argv[1], "optimize") == 0)
-        {
-            string filein, fileout;
-            if (argc > 2)
-            {
-                filein = argv[2];
-            }
-            else
-            {
-                filein = "players.csv";
-            }
-
-            if (argc > 3)
-            {
-                fileout = argv[3];
-            }
-            else
-            {
-                fileout = "output.csv";
-            }
-            runPlayerOptimizer(filein, fileout);
-        }
-
         if (strcmp(argv[1], "optimizen") == 0)
         {
             string filein, fileout, lineupstart;
