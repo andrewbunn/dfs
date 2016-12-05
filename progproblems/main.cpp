@@ -1536,10 +1536,10 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
 
 
     float expectedValue = winningsTotal / SIMULATION_COUNT;
-    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
+    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue, &lineups](float& val)
     {
         // variation below target:
-        float diff = val - 10 * TARGET_LINEUP_COUNT;  //(val - expectedValue);
+        float diff = val - 10 * lineups.size();  //(val - expectedValue);
         if (diff < 0)
         {
             return diff * diff;
@@ -1927,7 +1927,7 @@ void splitLineups(const string lineups)
         }
         myfile << endl;
         i++;
-        if (i == 10)
+        if (i == 14)
         {
             myfile << endl;
         }
@@ -2069,6 +2069,7 @@ void greedyLineupSelector()
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
+        bestset.ev = 0.f;
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
@@ -2593,7 +2594,7 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "splituplineups") == 0)
         {
-            splitLineups("outputsetsharpe-final.csv");
+            splitLineups("outputset.csv");
         }
 
         if (strcmp(argv[1], "determineownership") == 0)
