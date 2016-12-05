@@ -1536,10 +1536,10 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
 
 
     float expectedValue = winningsTotal / SIMULATION_COUNT;
-    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
+    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue, &lineups](float& val)
     {
         // variation below target:
-        float diff = val - 10 * TARGET_LINEUP_COUNT;  //(val - expectedValue);
+        float diff = val - 10 * lineups.size();  //(val - expectedValue);
         if (diff < 0)
         {
             return diff * diff;
@@ -2069,6 +2069,7 @@ void greedyLineupSelector()
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
+        bestset.ev = 0.f; // reset so we accept new lineup
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
