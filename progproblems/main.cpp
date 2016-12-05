@@ -1927,7 +1927,7 @@ void splitLineups(const string lineups)
         }
         myfile << endl;
         i++;
-        if (i == 10)
+        if (i == 14)
         {
             myfile << endl;
         }
@@ -2594,7 +2594,7 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "splituplineups") == 0)
         {
-            splitLineups("outputsetsharpe-final.csv");
+            splitLineups("outputset.csv");
         }
 
         if (strcmp(argv[1], "determineownership") == 0)
