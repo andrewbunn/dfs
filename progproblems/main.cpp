@@ -63,11 +63,11 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 60000
+#define LINEUPCOUNT 110000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 100000
+#define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 50
 // number of pools to generate
@@ -1275,6 +1275,8 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
 // then in simulation, we can track things like variance of a set as well and select "best mix" based on more than just EV.
 //
 // other ways to improve: estimate cutoffs more accurately for a given week based on ownership? and then the random values we generate for a simulation affect those lines based on ownership
+// perf: lineups.size() as template arg?
+// template optimize fn
 pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
 {
     float winningsTotal = 0.f;
@@ -1364,6 +1366,86 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
 
     float stdDev = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
     stdDev = sqrt(stdDev / SIMULATION_COUNT);
+
+    return make_pair(expectedValue, stdDev);
+}
+
+pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
+{
+    float winningsTotal = 0.f;
+    float runningAvg = 0.f;
+    bool converged = false;
+    static vector<float> simulationResults(SIMULATION_COUNT);
+    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
+    {
+        static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+        static thread_local random_device rdev;
+        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
+
+        alignas(256) array<float, 64> playerStandardNormals;
+        normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
+        array<float, 64> playerScores;
+        int i;
+        for (i = 0; i < corrIdx; i++)
+        {
+            const Player& p = allPlayers[i];
+            // .4z1 + 0.91651513899 * z2 = correlated standard normal
+            if (i % 2 == 0)
+            {
+                playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            }
+            else
+            {
+                float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
+                playerScores[i] = p.proj + (p.stdDev * corrZ);
+            }
+
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
+        }
+        for (; i < allPlayers.size(); i++)
+        {
+            const Player& p = allPlayers[i];
+
+            // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
+            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
+        }
+        // keep track of times we win high placing since that excludes additional same placements
+        // the problem with this is that generally we enter multiple contests, need to factor that in
+
+        array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
+        // create map of player -> generated score
+        // for each lineup -> calculate score
+        float winnings = 0.f;
+        for (auto& lineup : lineups)
+        {
+            float lineupScore = 0.f;
+            for (auto player : lineup)
+            {
+                lineupScore += playerScores[player];
+            }
+            // only count > threshold
+            if (lineupScore >= 171.14)
+            {
+                winnings = 1;
+            }
+        }
+        return winnings;
+    });
+
+    // we can calculate std dev per lineup and calculate risk of whole set
+    winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+
+    // is variation even useful here?
+    float expectedValue = winningsTotal / SIMULATION_COUNT;
+
+    float stdDev = 1.f;
 
     return make_pair(expectedValue, stdDev);
 }
@@ -1748,6 +1830,7 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     // do random for now, randomly select set then run simulation
     float bestValue = 0.f;
     lineup_set bestSet;
+    bestSet.ev = -100000.f;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         lineup_set set(getRandomSet(starterSet, allLineups, generator));
@@ -1854,8 +1937,10 @@ void greedyLineupSelector()
             for (auto & lineup : allLineups)
             {
                 set.set.push_back(lineup);
-                tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
-                if (set.getSharpe() > bestset.getSharpe())
+                tie(set.ev, set.stdev) = runSimulationMaxWin(set.set, p, corrIdx);
+                //tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
+                if (set.ev > bestset.ev)
+                //if (set.getSharpe() > bestset.getSharpe())
                 {
                     bestset = set;
                 }
