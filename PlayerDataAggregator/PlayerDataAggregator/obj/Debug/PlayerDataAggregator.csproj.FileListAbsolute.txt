@@ -9,3 +9,14 @@ C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\o
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.dll
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.pdb
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.xml
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.exe.config
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.exe
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\PlayerDataAggregator.pdb
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.dll
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\Newtonsoft.Json.dll
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.pdb
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.xml
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\Newtonsoft.Json.xml
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.csprojResolveAssemblyReference.cache
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.exe
+C:\Users\tjensen\Documents\tjdfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.pdb

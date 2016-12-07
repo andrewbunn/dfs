@@ -41,12 +41,29 @@ namespace PlayerDataAggregator
             { 10, "qb" }, { 20, "rb" }, { 30, "wr" }, { 40, "te" }, { 50, "def" }
         };
 
+        private static List<Tuple<int, int, KeyValuePair<int, string>>> DataRequests = new List<Tuple<int, int, KeyValuePair<int, string>>>();
+
         static void Main(string[] args)
         {
             Task.Run(async () =>
             {
                 //await GatherInfoAndGenerateAggregateFile();
-                await GatherHistoricalDataAndStore();
+                for (int i = 2000; i < 2017; i++)
+                {
+                    foreach (var pos in FF_TODAY_POSITIONS)
+                    {
+                        for (int j = 1; j <= 17; j++)
+                        {
+                            DataRequests.Add(new Tuple<int, int, KeyValuePair<int, string>>(i, j, pos));
+                        }
+                    }
+                }
+                do
+                {
+                    await GatherHistoricalDataAndStore();
+                } while (DataRequests.Count > 0);
+                Console.WriteLine("DONE!");
+                Console.ReadLine();
             }).Wait();
         }
         public static async Task GatherInfoAndGenerateAggregateFile()
@@ -63,39 +80,47 @@ namespace PlayerDataAggregator
         {
             // Gather information from Numberfire tables
             HttpClient client = new HttpClient();
-            for (int i = 2000; i < 2017; i++)
+            var failedRequests = new List<Tuple<int, int, KeyValuePair<int, string>>>();
+            foreach (var request in DataRequests)
             {
-                foreach (var pos in FF_TODAY_POSITIONS)
+                try
                 {
-                    for (int j = 1; j <= 17; j++)
+                    var year = request.Item1;
+                    var week = request.Item2;
+                    var pos = request.Item3;
+                    var httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, year, week, pos.Key, FF_TODAY_LEAGUE_ID));
+                    var playerResult = await httpResponse.Content.ReadAsStringAsync();
+                    HtmlDocument playerDoc = new HtmlDocument();
+                    playerDoc.LoadHtml(playerResult);
+                    var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
+                    var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
+                    switch (pos.Value)
                     {
-                        var httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, i, j, pos.Key, FF_TODAY_LEAGUE_ID));
-                        var playerResult = await httpResponse.Content.ReadAsStringAsync();
-                        HtmlDocument playerDoc = new HtmlDocument();
-                        playerDoc.LoadHtml(playerResult);
-                        var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
-                        var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
-                        switch (pos.Value)
-                        {
-                            case "qb":
-                                HandleQBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "rb":
-                                HandleRBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "wr":
-                                HandleWRData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "te":
-                                HandleTEData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "def":
-                                HandleDefData(playerRows.ToList());
-                                break;
-                        }
+                        case "qb":
+                            HandleQBData(playerRows.ToList(), week, year);
+                            break;
+                        case "rb":
+                            HandleRBData(playerRows.ToList(), week, year);
+                            break;
+                        case "wr":
+                            HandleWRData(playerRows.ToList(), week, year);
+                            break;
+                        case "te":
+                            HandleTEData(playerRows.ToList(), week, year);
+                            break;
+                        case "def":
+                            HandleDefData(playerRows.ToList());
+                            break;
                     }
                 }
+                catch(Exception ex)
+                {
+                    Console.WriteLine(string.Format("Failure - Year: {0}, Week: {1}, Pos: {2}", request.Item1, request.Item2, request.Item3));
+                    failedRequests.Add(request);
+                }
             }
+            // Bubble the failed requests back up so unlimited additional attempts can be made.
+            DataRequests = failedRequests;
         }
 
         private static void HandleQBData(List<HtmlNode> playerRows, int week, int year)
