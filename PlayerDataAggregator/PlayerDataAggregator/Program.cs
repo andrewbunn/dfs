@@ -30,7 +30,7 @@ namespace PlayerDataAggregator
         // Year, ReportType, LeagueID, Week
         private const string MY_FANTASY_BASE_ADDRESS = "http://www70.myfantasyleague.com/{0}/export?TYPE={1}&L={2}&W={3}&JSON=1";
         // Year, Week, PositionId, LeagueID
-        private const string FF_TODAY_BASE_ADDRESS = "http://www.fftoday.com/stats/playerstats.php?Season={0}&GameWeek={1}&PosID={2}&LeagueID={3}";
+        private const string FF_TODAY_BASE_ADDRESS = "http://www.fftoday.com/stats/playerstats.php?Season={0}&GameWeek={1}&PosID={2}&LeagueID={3}&cur_page={4}";
         private const string FF_ANALYSTS_BASE_ADDRESS = "http://apps.fantasyfootballanalytics.net/Projections/LoadData";
         private const string PERFORMANCE_REPORT = "playerScores";
         private const string INJURY_REPORT = "injuries";
@@ -61,8 +61,8 @@ namespace PlayerDataAggregator
             Task.Run(async () =>
             {
                 //await GatherInfoAndGenerateAggregateFile();
-                //await GatherHistoricalDataAndStore();
-                await GatherProjectionHistoryData();
+                await GatherHistoricalDataAndStore();
+                //await GatherProjectionHistoryData();
             }).Wait();
         }
 
@@ -202,38 +202,41 @@ namespace PlayerDataAggregator
                 {
                     for (int j = 1; j <= 17; j++)
                     {
-                        HttpResponseMessage httpResponse;
-                        string playerResult = "";
-                        try
+                        for (int page = 0; page < 4; page++)
                         {
-                            httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, i, j, pos.Key, FF_TODAY_LEAGUE_ID));
-                            playerResult = await httpResponse.Content.ReadAsStringAsync();
-                        }
-                        catch (Exception ex)
-                        {
-                            var x = ex;
-                        }
-                        HtmlDocument playerDoc = new HtmlDocument();
-                        playerDoc.LoadHtml(playerResult);
-                        var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
-                        var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
-                        switch (pos.Value)
-                        {
-                            case "qb":
-                                HandleQBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "rb":
-                                HandleRBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "wr":
-                                HandleWRData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "te":
-                                HandleTEData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "def":
-                                HandleDefData(playerRows.ToList());
-                                break;
+                            HttpResponseMessage httpResponse;
+                            string playerResult = "";
+                            try
+                            {
+                                httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, i, j, pos.Key, FF_TODAY_LEAGUE_ID, page));
+                                playerResult = await httpResponse.Content.ReadAsStringAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                var x = ex;
+                            }
+                            HtmlDocument playerDoc = new HtmlDocument();
+                            playerDoc.LoadHtml(playerResult);
+                            var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
+                            var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
+                            switch (pos.Value)
+                            {
+                                case "qb":
+                                    HandleQBData(playerRows.ToList(), j + 1, i);
+                                    break;
+                                case "rb":
+                                    HandleRBData(playerRows.ToList(), j + 1, i);
+                                    break;
+                                case "wr":
+                                    HandleWRData(playerRows.ToList(), j + 1, i);
+                                    break;
+                                case "te":
+                                    HandleTEData(playerRows.ToList(), j + 1, i);
+                                    break;
+                                case "def":
+                                    HandleDefData(playerRows.ToList());
+                                    break;
+                            }
                         }
                     }
                 }
