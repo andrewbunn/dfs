@@ -154,10 +154,14 @@
   <ItemGroup>
     <ClCompile Include="boxmuller_avx.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="parsing.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="avx_mathfun.h" />
     <ClInclude Include="lcg.h" />
+    <ClInclude Include="parsing.h" />
+    <ClInclude Include="Player.h" />
+    <ClInclude Include="Players.h" />
     <ClInclude Include="sse_mathfun.h" />
     <ClInclude Include="test.h" />
     <ClInclude Include="xorshift.h" />
