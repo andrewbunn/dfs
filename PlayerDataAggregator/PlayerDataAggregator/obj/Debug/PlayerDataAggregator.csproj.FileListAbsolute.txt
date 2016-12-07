@@ -6,3 +6,6 @@ C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\b
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.csprojResolveAssemblyReference.cache
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.exe
 C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\obj\Debug\PlayerDataAggregator.pdb
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.dll
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.pdb
+C:\Users\TAYLOR-PC\Documents\dfs\dfs\PlayerDataAggregator\PlayerDataAggregator\bin\Debug\HtmlAgilityPack.xml
