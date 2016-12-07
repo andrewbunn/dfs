@@ -361,7 +361,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.rb).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try
@@ -453,7 +453,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.wr).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try
@@ -542,7 +542,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.te).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try
