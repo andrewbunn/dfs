@@ -23,6 +23,9 @@
 #include <bitset>
 #include "xorshift.h"
 #include "test.h"
+#include "parsing.h"
+#include "Player.h"
+#include "Players.h"
 
 #include "lcg.h"
 #include <cassert>
@@ -63,11 +66,11 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 50000
+#define LINEUPCOUNT 300000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
-#define RANDOM_SET_COUNT 100000
+#define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 50
 // number of pools to generate
@@ -76,366 +79,6 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 
 using namespace concurrency;
 using namespace std;
-
-enum Position {
-    qb = 0,
-    rb = 1,
-    wr = 2,
-    te = 3,
-    def = 4
-};
-
-int numPositions = 5;
-
-int MaxPositionCount[5] = { 1, 3, 4, 2, 1 };
-int PositionCount[5] = { 1, 2, 3, 1, 1 };
-int slots[9] = {0, 1, 1, 2, 2, 2, 3, 5/*flex*/, 4 };
-
-struct Player {
-    string name;
-    float proj;
-    float stdDev;
-    uint8_t cost;
-    uint8_t pos;
-    uint8_t index;
-    Player(string s, uint8_t c, float p, uint8_t pos, uint8_t idx, float sd) : name(s), cost(c), proj(p), stdDev(sd), pos(pos), index(idx)
-    {}
-
-    Player() {}
-};
-
-struct Players {
-    array<int, 9> p;
-    array<int, 5> posCounts;
-    int totalCount;
-    float value;
-    bool hasFlex;
-
-    inline void addPlayer(int pos, float proj, int index)
-    {
-            posCounts[pos]++;
-            p[totalCount++] = index;
-            value += proj;
-    }
-
-    bool tryAddPlayer(int pos, float proj, int index)
-    {
-        int diff = posCounts[pos] - PositionCount[pos];
-        if (diff < 0)
-        {
-            addPlayer(pos, proj, index);
-            return true;
-        }
-
-        if (hasFlex || pos == 0 || pos == 4 || diff > 1)
-        {
-            return false;
-        }
-
-        addPlayer(pos, proj, index);
-        hasFlex = true;
-        return true;
-    }
-
-    Players() : totalCount(0), value(0), /*costOfUnfilledPositions(90),*/ hasFlex(false)
-    {
-        posCounts.fill(0);
-    }
-};
-
-struct Players2 {
-    uint64_t bitset;
-    array<uint8_t, 5> posCounts;
-    uint8_t totalCount;
-    float value;
-    bool hasFlex;
-
-    inline bool addPlayer(int pos, float proj, int index)
-    {
-        uint64_t bit = (uint64_t)1 << index;
-        if ((bitset & bit) == 0)
-        {
-            posCounts[pos]++;
-            bitset |= bit;
-            totalCount++;
-            value += proj;
-            return true;
-        }
-        return false;
-    }
-
-    bool tryAddPlayer(int pos, float proj, int index)
-    {
-        int diff = posCounts[pos] - PositionCount[pos];
-        if (diff < 0)
-        {
-            return addPlayer(pos, proj, index);
-        }
-
-        if (hasFlex || pos == 0 || pos == 4 || diff > 1)
-        {
-            return false;
-        }
-
-        bool succeeded = addPlayer(pos, proj, index);
-        hasFlex = succeeded;
-        return succeeded;
-    }
-
-    bool Players2::operator==(const Players2& other) {
-        return bitset == other.bitset;
-    }
-
-    Players2() : totalCount(0), value(0), bitset(0), /*costOfUnfilledPositions(90),*/ hasFlex(false)
-    {
-        posCounts.fill(0);
-    }
-};
-
-bool operator==(const Players2& first, const Players2& other) {
-    return first.bitset == other.bitset;
-}
-
-bool operator<(const Players2& lhs, const Players2& rhs)
-{
-    // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.value - rhs.value;
-    if (diff == 0)
-    {
-        return lhs.bitset > rhs.bitset;
-    }
-    else
-    {
-        return diff > 0;
-    }
-}
-
-size_t players_hash(const Players2& ps)
-{
-    return hash<uint64_t>()(ps.bitset);
-}
-
-vector<string> getNextLineAndSplitIntoTokens(istream& str)
-{
-    vector<string>   result;
-    string                line;
-    getline(str, line);
-
-    stringstream          lineStream(line);
-    string                cell;
-
-    while (getline(lineStream, cell, ','))
-    {
-        result.push_back(cell);
-    }
-    return result;
-}
-
-vector<string> parseNames(string filename)
-{
-    vector<string> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    while (tokens.size() == 1)
-    {
-        result.emplace_back(tokens[0]);
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
-vector<pair<string, string>> parseCorr(string filename)
-{
-    vector<pair<string, string>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    while (tokens.size() == 2)
-    {
-        result.emplace_back(tokens[0], tokens[1]);
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
-vector<Player> parsePlayers(string filename)
-{
-    vector<Player> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    while (tokens.size() >= 5)
-    {
-        int c = atoi(tokens[1].c_str()) - 10;
-        float p = (float)atof(tokens[2].c_str());
-        int pos = atoi(tokens[3].c_str());
-        float sd = (float)atof(tokens[4].c_str());
-        if (pos == 0)
-        {
-            c -= 10;
-        }
-        if (tokens.size() == 5)
-        {
-            result.emplace_back(tokens[0], c, p, pos, count++, sd);
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-vector<vector<string>> parseLineupString(const string filename)
-{
-    vector<vector<string>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-
-    while (tokens.size() >= 1)
-    {
-        if (tokens[0].size() > 0)
-        {
-            if (isalpha(tokens[0][0]))
-            {
-                result.push_back(tokens);
-            }
-            else
-            {
-            }
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
-vector<vector<string>> parseLineupSet(const string filename)
-{
-    vector<vector<string>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    vector<string> current;
-
-    while (tokens.size() >= 1)
-    {
-        if (tokens[0].size() > 0)
-        {
-            if (isalpha(tokens[0][0]))
-            {
-                result.push_back(tokens);
-                current.clear();
-            }
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-// for now just parse player names like output.csv current does, could make format easier to parse
-vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint8_t>& playerIndices)
-{
-    vector<vector<uint8_t>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    vector<uint8_t> current;
-
-    while (tokens.size() == 1)
-    {
-        if (tokens[0].size() > 0)
-        {
-            if (isalpha(tokens[0][0]))
-            {
-                auto it = playerIndices.find(tokens[0]);
-                if (it != playerIndices.end())
-                {
-                    current.push_back(it->second);
-                }
-                else
-                {
-                    throw invalid_argument("Invalid player: " + tokens[0]);
-                }
-            }
-            else
-            {
-                // value/cost number, signifies end of lineup.
-                // duration at start of file
-                if (current.size() > 0)
-                {
-                    result.push_back(current);
-                    current.clear();
-                }
-            }
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
-// can transpose players of same type
-Players2 knapsackPositions(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players)
-{
-    if (pos >= 9)
-    {
-        return oldLineup;
-    }
-
-    Players2 bestLineup = oldLineup;
-    auto loop = [&](const Player& p)
-    {
-        Players2 currentLineup = oldLineup;
-        if (p.cost <= budget)
-        {
-            if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
-            {
-                return knapsackPositions(budget - p.cost, pos + 1, currentLineup, players);
-            }
-        }
-        return currentLineup;
-    };
-    if (pos <= 2)
-    {
-        //parallel_for(size_t(0), players[pos].size(), loop);
-        // could parallel transform each to a "lineup", keep best lineup
-        vector<Players2> lineupResults(players[pos].size());
-        //parallel_for_each(begin(players[pos]), end(players[pos]), loop);
-        parallel_transform(begin(players[pos]), end(players[pos]), begin(lineupResults), loop);
-
-        for (auto lineup : lineupResults)
-        {
-            if (lineup.value > bestLineup.value)
-            {
-                bestLineup = lineup;
-            }
-        }
-    }
-    else
-    {
-
-        for (int i = 0; i < players[pos].size(); i++)
-        {
-            const Player& p = players[pos][i];
-            Players2 currentLineup = oldLineup;
-            if (p.cost <= budget)
-            {
-                if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
-                {
-                    Players2 lineup = knapsackPositions(budget - p.cost, pos + 1, currentLineup, players);
-                    if (lineup.value > bestLineup.value)
-                    {
-                        bestLineup = lineup;
-                    }
-                }
-            }
-        }
-    }
-    return bestLineup;
-}
-
-typedef vector<Players2> lineup_list;
-
-
 
 // can transpose players of same type
 lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
@@ -493,7 +136,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
         {
             merged.insert(merged.end(), lineup.begin(), lineup.end());
             sort(merged.begin(), merged.end());
-            unique(merged.begin(), merged.end());
+            merged.erase(unique(merged.begin(), merged.end()), merged.end());
             if (merged.size() > LINEUPCOUNT)
             {
                 merged.resize(LINEUPCOUNT);
@@ -504,9 +147,6 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
     else
     {
-        //lineup_list bestLineups;
-        //bestLineups.reserve(2 * LINEUPCOUNT);
-        //bestLineups.push_back(oldLineup);
         lineup_list bestLineups(1, oldLineup);
         for (int i = startPos; i < players[pos].size(); i++)
         {
@@ -533,8 +173,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
 #else
                     sort(bestLineups.begin(), bestLineups.end());
 #endif
-                    unique(bestLineups.begin(), bestLineups.end());
-
+                    bestLineups.erase(unique(bestLineups.begin(), bestLineups.end()), bestLineups.end());
                     if (bestLineups.size() > LINEUPCOUNT)
                     {
                         bestLineups.resize(LINEUPCOUNT);
@@ -544,27 +183,6 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
         }
         return bestLineups;
     }
-}
-
-Players2 generateLineup(vector<Player>& p)
-{
-    vector<vector<Player>> playersByPos(9);
-    for (int i = 0; i < 9; i++)
-    {
-        for (auto& pl : p)
-        {
-            if (pl.pos == slots[i])
-            {
-                playersByPos[i].push_back(pl);
-            }
-            else if (slots[i] == 5 && (pl.pos == 1 || pl.pos == 2 || pl.pos == 3))
-            {
-                playersByPos[i].push_back(pl);
-            }
-        }
-    }
-
-    return knapsackPositions(100, 0, Players2(), playersByPos);
 }
 
 lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime)
@@ -654,43 +272,6 @@ lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers
     return output;
 }
 
-void runPlayerOptimizer(string filein, string fileout)
-{
-    vector<Player> p = parsePlayers(filein);
-    auto start = chrono::steady_clock::now();
-
-    Players2 lineup = generateLineup(p);
-    auto end = chrono::steady_clock::now();
-    auto diff = end - start;
-
-    ofstream myfile;
-    myfile.open(fileout);
-    myfile << chrono::duration <double, milli>(diff).count() << " ms" << endl;
-
-        int totalcost = 0;
-        uint64_t bitset = lineup.bitset;
-        int count = 0;
-        for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
-        {
-            if (bitset & 1 == 1)
-            {
-                count++;
-                myfile << p[i].name;
-                totalcost += p[i].cost;
-                myfile << endl;
-            }
-            bitset = bitset >> 1;
-        }
-
-        myfile << lineup.value;
-        myfile << endl;
-        myfile << totalcost;
-        myfile << endl;
-        myfile << endl;
-
-    myfile.close();
-}
-
 void saveLineupList(vector<Player>& p, lineup_list& lineups, string fileout, double msTime)
 {
     ofstream myfile;
@@ -751,164 +332,6 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart)
     saveLineupList(p, lineups, fileout, msTime);
 }
 
-void normalizeName(string& name)
-{
-    // normalize to just 'a-z' + space
-    // what about jr/sr?
-    transform(name.begin(), name.end(), name.begin(), ::tolower);
-    //return name;
-    auto it = copy_if(name.begin(), name.end(), name.begin(), 
-        [](char& c) {
-        return (islower(c) != 0) || c == ' ';
-    });
-    name.resize(distance(name.begin(), it));
-
-    // sr/jr
-    static string sr = " sr";
-    static string jr = " jr";
-
-    it = find_end(name.begin(), name.end(), sr.begin(), sr.end());
-    name.resize(distance(name.begin(), it));
-
-    it = find_end(name.begin(), name.end(), jr.begin(), jr.end());
-    name.resize(distance(name.begin(), it));
-
-    array<string, 32> dsts = {
-        "Baltimore",
-            "Houston",
-            "Arizona",
-            "Denver",
-            "Carolina",
-            "Kansas City",
-            "Chicago",
-            "Jacksonville",
-            "New England",
-            "New Orleans",
-            "Tampa Bay",
-            "Los Angeles",
-            "Philadelphia",
-            "New York Jets",
-            "Dallas",
-            "Cincinnati",
-            "Cleveland",
-            "San Diego",
-            "Minnesota",
-            "Washington",
-            "San Francisco",
-            "Atlanta",
-            "New York Giants",
-            "Miami",
-            "Green Bay",
-            "Seattle",
-            "Tennessee",
-            "Pittsburgh",
-            "Oakland",
-            "Detroit",
-            "Indianapolis",
-            "Buffalo"
-    };
-
-    for_each(dsts.begin(), dsts.end(), [](string& n) {
-        transform(n.begin(), n.end(), n.begin(), ::tolower);
-    });
-
-    auto i = find_if(dsts.begin(), dsts.end(), [&name](string& n){
-        return name.find(n) != string::npos;
-    });
-    if (i != dsts.end())
-    {
-        name = *i;
-    }
-}
-
-vector<tuple<string, int, int>> parseCosts(string filename)
-{
-    vector<tuple<string, int, int>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    while (tokens.size() == 3)
-    {
-        int c = stoi(tokens[1]);
-        int pos = stoi(tokens[2]);
-        normalizeName(tokens[0]);
-        // dont add david johnson TE
-        if (tokens[0] != "david johnson" || pos == 1)
-        {
-            result.emplace_back(tokens[0], c, pos);
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
-unordered_map<string, float> parseProjections(string filename)
-{
-    unordered_map<string, float> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    // two david johnsons, just only add first value for now, should be fine
-    while (tokens.size() >= 2)
-    {
-        float proj;
-        if (tokens.size() == 2)
-        {
-            proj = stof(tokens[1]);
-        }
-        else
-        {
-            proj = stof(tokens[2]);
-        }
-        normalizeName(tokens[0]);
-        if (result.find(tokens[0]) != result.end())
-        {
-            cout << tokens[0] << endl;
-        }
-        else
-        {
-            result.emplace(tokens[0], proj);
-        }
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-    cout << endl;
-    return result;
-}
-
-vector<pair<string, float>> parseOwnership(string filename)
-{
-    vector<pair<string, float>> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
-    // two david johnsons, just only add first value for now, should be fine
-    while (tokens.size() >= 2)
-    {
-        float proj = stof(tokens[tokens.size() - 1]);
-        normalizeName(tokens[0]);
-        result.emplace_back(tokens[0], proj);
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-    return result;
-}
-
-vector<string> parseRanks(string filename)
-{
-    vector<string> result;
-    ifstream       file(filename);
-    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    while (tokens.size() >= 1)
-    {
-        normalizeName(tokens[0]);
-
-        result.emplace_back(tokens[0]);
-        tokens = getNextLineAndSplitIntoTokens(file);
-    }
-
-    return result;
-}
-
 
 // "tweak projections" take generated values from costs + numfire, perform swaps based on input
 void tweakProjections(vector<tuple<string, int, float, int>>& positionPlayers, int pos)
@@ -943,7 +366,6 @@ void tweakProjections(vector<tuple<string, int, float, int>>& positionPlayers, i
             }
         }
     }
-
 }
 
 void playerStrictDominator(vector<Player>& players)
@@ -1119,19 +541,55 @@ void ownershipDriver(string playersFile, string ownershipFile)
     }
 }
 
+float mixPlayerProjections(Player& p, float numberfire, float fpros, float yahoo)
+{
+    if (p.pos == 0)
+    {
+        // for QB: probably use close to even average of yahoo, cbs, stats, numberfire
+        // could ignore espn when dling data?
+        return fpros * .8333 + yahoo * .1666;
+    }
+    else
+    {
+        // for now just 70% yahoo, 30% fpros (fpros includes numberfire)
+        return yahoo * .7 + fpros * .3;
+    }
+}
+
 void removeDominatedPlayers(string filein, string fileout)
 {
     vector<Player> players = parsePlayers(filein);
 
-    unordered_map<string, float> differencing = parseProjections("diffs.csv");
+    unordered_map<string, float> yahoo = parseYahooStats();
+    unordered_map<string, float> fpros = parseProsStats();
+    cout << "Mixing projections" << endl;
     for (auto& p : players)
     {
-        auto itDiff = differencing.find(p.name);
+        auto itpros = fpros.find(p.name);
+        auto ity = yahoo.find(p.name);
+
+        // linear reg models here:
 
         // players we dont want to include can just have large negative diff
-        if (itDiff != differencing.end())
+        if (itpros != fpros.end() && ity != yahoo.end())
         {
-            p.proj += itDiff->second;
+            if (p.name == "david johnson" && p.pos == 3)
+            {
+                p.proj = 0.f;
+            }
+            else
+            {
+                p.proj = mixPlayerProjections(p, p.proj, itpros->second, ity->second);
+            }
+        }
+        else
+        {
+            cout << p.name << endl;
+            if (p.pos != 4)
+            {
+                // ignore player if it wasnt high on yahoo/pros?
+                p.proj = 0.f; 
+            }
         }
     }
 
@@ -1315,33 +773,13 @@ void importProjections(string fileout, bool tweaked, bool tweakAndDiff)
 // randomly generate score for all involved players, then determine total prize winnings based on scores of each lineup
 // use some backdata to calculate lineup score -> prize winnings
 // average prize winnings over all simulations to determine EV of that lineup set
-
-// convert boxmuller impl:
-// mean 0, std 1 -> boxmuller * std + mean
-// per threaD? have table of generated values from player's distributation
-// so 
-
 template <typename T>
 inline float generateScore(uint8_t player, const vector<Player>& allPlayers, T& generator)
 {
     const Player& p = allPlayers[player];
-    // need to research what std dev should be
-    //return p.distribution(generator);
     normal_distribution<float> distribution(p.proj, p.stdDev);
 
-    // correlated normal dist
-    // auto theta = acos(0.4);
-    // cbind (two cols? where col1 = random results of player 1, col2 = random results of player 2
-    // If center is TRUE then centering is done by subtracting the column means (omitting NAs) of x from their corresponding columns, and if center is FALSE, no centering is done.
-    // so each col subtracts mean
-    // auto Id = diag(n) (nxn matrix with diagonal = 1 where n is number of rows? from above)
-
-    // basically we would have vector of random samples for player 1 and player 2, input into R code which would modify second vector
-    // how will parallel code use this?
-    // or this math: x2 = 0.4*z1 + sqrt(1-.4^2)*z2
     // .4z1 + 0.91651513899 * z2 = correlated standard normal
-    // Y = r*X
-
     return distribution(generator);
 }
 
@@ -1440,8 +878,9 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
     }
     return value;
 }
+
 // ideas for improvements:
-// customized deviations
+// customized deviations - non-normal distributions
 // account for contest types/costs/prizes
 // estimate thresholds specific to a given week? (how much obvious value is out there?)
 //
@@ -1449,18 +888,13 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
 // then generate other sets, how do we incorporate those together?
 // we could enforce % of lineups selected from each of those sets but how they would get selected/weighted ultimately depends
 // on projections we use in simulation
-// essentially, I want to somehow indicate that i want to significantly limit exposure to some players (eg. marshall)
-// so lets say marshall is ~10% target. marshall allowed lineups are chosen 10% of time in set selection! done
-// so we do our lineup generation in similar process to what we always did, but rather than just getting one lineup, we generate tons, and use those for simulation
-// and enforce our "asset mix"
 // then we need more data to drive our "asset mix"
 //
 // then in simulation, we can track things like variance of a set as well and select "best mix" based on more than just EV.
 //
 // other ways to improve: estimate cutoffs more accurately for a given week based on ownership? and then the random values we generate for a simulation affect those lines based on ownership
-// 
-//
-
+// perf: lineups.size() as template arg?
+// template optimize fn
 pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
 {
     float winningsTotal = 0.f;
@@ -1470,8 +904,6 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
     {
         static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-        //static thread_local mt19937 generatorTh(seed1);
-        //static thread_local xor128 generatorTh(seed1);
         static thread_local random_device rdev;
         static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
 
@@ -1510,6 +942,7 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             }
         }
         // keep track of times we win high placing since that excludes additional same placements
+        // the problem with this is that generally we enter multiple contests, need to factor that in
 
         array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
         // create map of player -> generated score
@@ -1524,23 +957,21 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
             }
             // lookup score -> winnings
             // need to account for my own entries for winnings
-            winnings += determineWinnings(lineupScore/*, winningsCutoffs, winningsValues*/, placementCount);
+            winnings += determineWinnings(lineupScore, placementCount);
         }
         return winnings;
     });
 
     // we can calculate std dev per lineup and calculate risk of whole set
-    // i guess just using simulated variance of set is fine for now
     winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+
     // calculate std dev here:
     // sqrt (1/n * [(val - mean)^2 + ]
-
-
     float expectedValue = winningsTotal / SIMULATION_COUNT;
-    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue](float& val)
+    transform(simulationResults.begin(), simulationResults.end(), simulationResults.begin(), [&expectedValue, &lineups](float& val)
     {
         // variation below target:
-        float diff = val - 10 * TARGET_LINEUP_COUNT;  //(val - expectedValue);
+        float diff = val - 10 * lineups.size();  //(val - expectedValue);
         if (diff < 0)
         {
             return diff * diff;
@@ -1553,6 +984,86 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
 
     float stdDev = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
     stdDev = sqrt(stdDev / SIMULATION_COUNT);
+
+    return make_pair(expectedValue, stdDev);
+}
+
+pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
+{
+    float winningsTotal = 0.f;
+    float runningAvg = 0.f;
+    bool converged = false;
+    static vector<float> simulationResults(SIMULATION_COUNT);
+    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
+    {
+        static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+        static thread_local random_device rdev;
+        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
+
+        alignas(256) array<float, 64> playerStandardNormals;
+        normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
+        array<float, 64> playerScores;
+        int i;
+        for (i = 0; i < corrIdx; i++)
+        {
+            const Player& p = allPlayers[i];
+            // .4z1 + 0.91651513899 * z2 = correlated standard normal
+            if (i % 2 == 0)
+            {
+                playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            }
+            else
+            {
+                float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
+                playerScores[i] = p.proj + (p.stdDev * corrZ);
+            }
+
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
+        }
+        for (; i < allPlayers.size(); i++)
+        {
+            const Player& p = allPlayers[i];
+
+            // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
+            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+            if (playerScores[i] < 0)
+            {
+                playerScores[i] = 0.f;
+            }
+        }
+        // keep track of times we win high placing since that excludes additional same placements
+        // the problem with this is that generally we enter multiple contests, need to factor that in
+
+        array<uint8_t, CONTENDED_PLACEMENT_SLOTS> placementCount = {};
+        // create map of player -> generated score
+        // for each lineup -> calculate score
+        float winnings = 0.f;
+        for (auto& lineup : lineups)
+        {
+            float lineupScore = 0.f;
+            for (auto player : lineup)
+            {
+                lineupScore += playerScores[player];
+            }
+            // only count > threshold
+            if (lineupScore >= 171.14)
+            {
+                winnings = 1;
+            }
+        }
+        return winnings;
+    });
+
+    // we can calculate std dev per lineup and calculate risk of whole set
+    winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
+
+    // is variation even useful here?
+    float expectedValue = winningsTotal / SIMULATION_COUNT;
+
+    float stdDev = 1.f;
 
     return make_pair(expectedValue, stdDev);
 }
@@ -1703,8 +1214,6 @@ void outputBestResults(vector<Player>& p, vector<lineup_set>& bestResults)
     ofstream myfile;
     myfile.open("outputset.csv");
 
-    //myfile << bestValue;
-    //myfile << endl;
     for (auto& set : bestResults)
     {
         myfile << set.ev << "," << set.stdev << endl;
@@ -1755,22 +1264,6 @@ float calcEV(vector<Player>& p, vector<uint8_t>& lineup)
     });
 }
 
-void setFromIndices(const vector<uint16_t>& setIndices, const vector<vector<vector<uint8_t>>>& allLineups, lineup_set& set)
-{
-    for (int i = 0; i < setIndices.size(); i++)
-    {
-        set.set[i] = allLineups[setIndices[i]][0];
-    }
-}
-
-void getNextSet(vector<uint16_t>& setIndices, default_random_engine& generator)
-{
-    static uniform_int_distribution<int> distribution(0, TARGET_LINEUP_COUNT - 1);
-    static uniform_int_distribution<int> distributionIndices(0, NUM_ITERATIONS_OWNERSHIP - 1);
-    int i = distribution(generator);
-    setIndices[i] = distributionIndices(generator);
-}
-
 lineup_set lineupSelectorOwnership(const string ownershipFile, const string playersFile)
 {
     vector<Player> p = parsePlayers(playersFile);
@@ -1782,12 +1275,9 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
         playerIndices.emplace(x.name, x.index);
     }
 
-    //vector<pair<string, float>> ownership = parseOwnership(ownershipFile);
-
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     default_random_engine generator(seed1);
 
-    //int totalSets = STOCHASTIC_OPTIMIZER_RUNS;
     int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
 
     vector<vector<vector<uint8_t>>> allLineups(totalSets);
@@ -1797,17 +1287,6 @@ lineup_set lineupSelectorOwnership(const string ownershipFile, const string play
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
     }
-    /*
-    sort(allLineups.begin(), allLineups.end(), [&p](vector<vector<uint8_t>>& a, vector<vector<uint8_t>>& b)
-    {
-        return calcEV(p, a[0]) > calcEV(p, b[0]);
-    });
-
-    cout << calcEV(p, allLineups[0][0]) << endl;
-    */
-    // randomly pick a set -> if it will fit your requirements, pick a lineup
-    // so we want 10% of some players, remaining % contains none of those players
-    //= parseLineups(lineupsFile, playerIndices);
 
     // just shuffle and pull from sets
     // starterSet is just the first N lineups from all lineups which is the initialization of reservoir algorithm
@@ -1928,7 +1407,7 @@ void splitLineups(const string lineups)
         }
         myfile << endl;
         i++;
-        if (i == 10)
+        if (i == 14)
         {
             myfile << endl;
         }
@@ -1969,6 +1448,7 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     // do random for now, randomly select set then run simulation
     float bestValue = 0.f;
     lineup_set bestSet;
+    bestSet.ev = -100000.f;
     for (int i = 0; i < RANDOM_SET_COUNT; i++)
     {
         lineup_set set(getRandomSet(starterSet, allLineups, generator));
@@ -2007,6 +1487,9 @@ void greedyLineupSelector()
 {
     vector<Player> p = parsePlayers("players.csv");
     vector<pair<string, string>> corr = parseCorr("corr.csv");
+
+    vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
+
     int corrIdx = 0;
     for (auto & s : corr)
     {
@@ -2022,47 +1505,60 @@ void greedyLineupSelector()
         });
         if (it != p.end() && itC != p.end())
         {
+            swap(p[corrIdx].index, it->index);
             iter_swap(it, p.begin() + corrIdx++);
+            swap(p[corrIdx].index, itC->index);
             iter_swap(itC, p.begin() + corrIdx++);
         }
     }
 
     unordered_map<string, uint8_t> playerIndices;
+    unordered_map<uint8_t, int> playerCounts;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
+    }
+    vector<pair<uint8_t, float>> ownershipLimits;
+    for (auto& x : ownership)
+    {
+        ownershipLimits.emplace_back(playerIndices.find(x.first)->second, x.second);
     }
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     auto start = chrono::steady_clock::now();
 
-    int totalSets = NUM_ITERATIONS_OWNERSHIP;// ownership.size();
+    int totalSets = 2;// NUM_ITERATIONS_OWNERSHIP;// ownership.size();
     vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
 
-        /*
-    vector<vector<vector<uint8_t>>> allLineups(totalSets);
+    /*vector<vector<vector<uint8_t>>> allLineups(totalSets);
     for (int i = 0; i < totalSets; i++)
     {
         ostringstream stream;
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
-    }
-    */
+    }*/
+    
 
+    ofstream myfile;
+    myfile.open("outputset.csv");
     // choose lineup that maximizes objective
     // iteratively add next lineup that maximizes objective.
     lineup_set bestset;
+    int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         lineup_set set = bestset;
+        bestset.ev = 0.f; // reset so we accept new lineup
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
             for (auto & lineup : allLineups)
             {
                 set.set.push_back(lineup);
-                tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
-                if (set.getSharpe() > bestset.getSharpe())
+                tie(set.ev, set.stdev) = runSimulationMaxWin(set.set, p, corrIdx);
+                //tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
+                if (set.ev > bestset.ev)
+                //if (set.getSharpe() > bestset.getSharpe())
                 {
                     bestset = set;
                 }
@@ -2072,13 +1568,67 @@ void greedyLineupSelector()
         auto end = chrono::steady_clock::now();
         auto diff = end - start;
         double msTime = chrono::duration <double, milli>(diff).count();
-        cout << "\rLineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << flush;
+        cout << "Lineups: "<< (i+1) << " EV: " << bestset.ev << ", sortino: " << bestset.getSharpe() << " elapsed time: " << msTime << endl;
 
-        if (i == 33)
+        // rather than "enforced ownership" we should just have ownership caps
+        // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and work with new player set
+        for (auto x : bestset.set[bestset.set.size() - 1])
         {
-            // hack to deal with djs over ownership right now
-            allLineups = parseLineups("output-nodj.csv", playerIndices);
+            auto it = playerCounts.find(x);
+            if (it == playerCounts.end())
+            {
+                playerCounts.emplace(x, 1);
+            }
+            else
+            {
+                it->second++;
+            }
         }
+
+        vector<string> playersToRemove;
+        for (auto & x : ownershipLimits)
+        {
+            auto it = playerCounts.find(x.first);
+            if (it != playerCounts.end())
+            {
+                float percentOwned = (float)it->second / (float)TARGET_LINEUP_COUNT;
+                if (percentOwned >= x.second)
+                {
+                    playersToRemove.push_back(p[x.first].name);
+                }
+            }
+        }
+
+        if (playersToRemove.size() > 0)
+        {
+            double msTime = 0;
+            lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+            // faster to parse lineup_list to allLineups
+            allLineups.clear();
+            for (auto& lineup : lineups)
+            {
+                uint64_t bitset = lineup.bitset;
+                int count = 0;
+                vector<uint8_t> currentLineup;
+                for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
+                {
+                    if (bitset & 1 == 1)
+                    {
+                        count++;
+                        currentLineup.push_back((uint8_t)i);
+                    }
+                    bitset = bitset >> 1;
+                }
+                allLineups.push_back(currentLineup);
+            }
+        }
+
+        for (auto& x : bestset.set[bestset.set.size() - 1])
+        {
+            cout << p[x].name;
+            cout << ",";
+        }
+        cout << endl;
     }
 
     cout << endl;
@@ -2088,8 +1638,6 @@ void greedyLineupSelector()
     double msTime = chrono::duration <double, milli>(diff).count();
 
     // output bestset
-    ofstream myfile;
-    myfile.open("outputset.csv");
     myfile << msTime << "ms" << endl;
     myfile << bestset.ev << "," << bestset.getSharpe();
     myfile << endl;
@@ -2364,29 +1912,6 @@ void evaluateScore(string filename)
 int main(int argc, char* argv[]) {
     if (argc > 1)
     {
-        if (strcmp(argv[1], "optimize") == 0)
-        {
-            string filein, fileout;
-            if (argc > 2)
-            {
-                filein = argv[2];
-            }
-            else
-            {
-                filein = "players.csv";
-            }
-
-            if (argc > 3)
-            {
-                fileout = argv[3];
-            }
-            else
-            {
-                fileout = "output.csv";
-            }
-            runPlayerOptimizer(filein, fileout);
-        }
-
         if (strcmp(argv[1], "optimizen") == 0)
         {
             string filein, fileout, lineupstart;
@@ -2529,7 +2054,7 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "splituplineups") == 0)
         {
-            splitLineups("outputsetsharpe-final.csv");
+            splitLineups("outputset.csv");
         }
 
         if (strcmp(argv[1], "determineownership") == 0)
@@ -2560,6 +2085,17 @@ int main(int argc, char* argv[]) {
         {
             greedyLineupSelector();
         }
+
+        if (strcmp(argv[1], "parsehistproj") == 0)
+        {
+            parseHistoricalProjFiles();
+        }
+
+        if (strcmp(argv[1], "parsefpros") == 0)
+        {
+            parseProsStats();
+        }
+
     }
     return 0;
 }
