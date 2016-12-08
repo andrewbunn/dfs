@@ -70,7 +70,6 @@ template <>
 class LCG<__m128> {
 public:
     LCG() : x(_mm_setr_epi32(1, 2, 3, 4)) {}
-    LCG(int a, int b, int c, int d) : x(_mm_setr_epi32(a, b, c, d)) {}
 
     __m128 operator()() {
         x = _mm_add_epi32(mullo_epi32(x, *(__m128i*)_ps_lcg_a), *(__m128i*)_ps_lcg_b);
