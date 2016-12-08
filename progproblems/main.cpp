@@ -62,8 +62,26 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
     }
 }
 
+static void normaldistf_boxmuller_sse2(float* data, size_t count, LCG<__m128>& r) {
+    assert(count % 8 == 0);
+    const __m128 twopi = _mm_set1_ps(2.0f * 3.14159265358979323846f);
+    const __m128 one = _mm_set1_ps(1.0f);
+    const __m128 minustwo = _mm_set1_ps(-2.0f);
+
+    for (size_t i = 0; i < count; i += 8) {
+        __m128 u1 = _mm_sub_ps(one, r()); // [0, 1) -> (0, 1]
+        __m128 u2 = r();
+        __m128 radius = _mm_sqrt_ps(_mm_mul_ps(minustwo, log_ps(u1)));
+        __m128 theta = _mm_mul_ps(twopi, u2);
+        __m128 sintheta, costheta;
+        sincos_ps(theta, &sintheta, &costheta);
+        _mm_store_ps(&data[i], _mm_mul_ps(radius, costheta));
+        _mm_store_ps(&data[i + 4], _mm_mul_ps(radius, sintheta));
+    }
+}
+
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 50000
+#define LINEUPCOUNT 100000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -1473,10 +1491,20 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
         //static thread_local mt19937 generatorTh(seed1);
         //static thread_local xor128 generatorTh(seed1);
         static thread_local random_device rdev;
-        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
 
         alignas(256) array<float, 64> playerStandardNormals;
+#ifdef __AVX__ 
+        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
         normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
+#else
+        static thread_local mt19937 generatorTh(seed1);
+        static thread_local normal_distribution<float> dist(0.f, 1.f);
+        generate(playerStandardNormals.begin(), playerStandardNormals.end(), [&]() {
+            return dist(generatorTh);
+        });
+        //static thread_local LCG<__m128> lcg(seed1, rdev(), rdev(), rdev());
+        //normaldistf_boxmuller_sse2(&playerStandardNormals[0], 64, lcg);
+#endif
         array<float, 64> playerScores;
         int i;
         for (i = 0; i < corrIdx; i++)
