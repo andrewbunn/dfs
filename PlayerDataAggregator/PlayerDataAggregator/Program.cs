@@ -30,7 +30,8 @@ namespace PlayerDataAggregator
         // Year, ReportType, LeagueID, Week
         private const string MY_FANTASY_BASE_ADDRESS = "http://www70.myfantasyleague.com/{0}/export?TYPE={1}&L={2}&W={3}&JSON=1";
         // Year, Week, PositionId, LeagueID
-        private const string FF_TODAY_BASE_ADDRESS = "http://www.fftoday.com/stats/playerstats.php?Season={0}&GameWeek={1}&PosID={2}&LeagueID={3}";
+        private const string FF_TODAY_BASE_ADDRESS = "http://www.fftoday.com/stats/playerstats.php?Season={0}&GameWeek={1}&PosID={2}&LeagueID={3}&cur_page={4}";
+        private const string FF_ANALYSTS_BASE_ADDRESS = "http://apps.fantasyfootballanalytics.net/Projections/LoadData";
         private const string PERFORMANCE_REPORT = "playerScores";
         private const string INJURY_REPORT = "injuries";
         private const string PLAYER_REPORT = "players";
@@ -41,14 +42,165 @@ namespace PlayerDataAggregator
             { 10, "qb" }, { 20, "rb" }, { 30, "wr" }, { 40, "te" }, { 50, "def" }
         };
 
+        private static List<Tuple<int, int, KeyValuePair<int, string>, int>> DataRequests = new List<Tuple<int, int, KeyValuePair<int, string>, int>>();
+        private static readonly List<FFAnalyst> FF_ANALYSTS = new List<FFAnalyst>()
+        {
+            new FFAnalyst() { Id = -1, DataScrapeId = 2, Name = "CBS: CBS Average", Weight = "1"},
+            new FFAnalyst() { Id = 4, DataScrapeId = 13, Name = "ESPN", Weight = "1"},
+            new FFAnalyst() { Id = 19, DataScrapeId = 18, Name = "FantasyFootballNerd", Weight = "1"},
+            new FFAnalyst() { Id = 18, DataScrapeId = 10, Name = "FantasySharks", Weight = "1"},
+            new FFAnalyst() { Id = 7, DataScrapeId = 12, Name = "FFToday", Weight = "1"},
+            new FFAnalyst() { Id = 6, DataScrapeId = 10, Name = "FOX Sports", Weight = "1"},
+            new FFAnalyst() { Id = 5, DataScrapeId = 23, Name = "NFL", Weight = "1"},
+            new FFAnalyst() { Id = 8, DataScrapeId = 18, Name = "NumberFire", Weight = "1"},
+            new FFAnalyst() { Id = 3, DataScrapeId = 2, Name = "Yahoo Sports", Weight = "1"},
+            new FFAnalyst() { Id = 9, DataScrapeId = 2, Name = "FantasyPros", Weight = "1"}
+        };
+
         static void Main(string[] args)
         {
             Task.Run(async () =>
             {
                 //await GatherInfoAndGenerateAggregateFile();
-                await GatherHistoricalDataAndStore();
+                //for (int i = 2000; i < 2017; i++)
+                //{
+                //    foreach (var pos in FF_TODAY_POSITIONS)
+                //    {
+                //        for (int j = 1; j <= 17; j++)
+                //        {
+                //            for (int page = 0; page < 4; page++)
+                //            {
+                //                DataRequests.Add(new Tuple<int, int, KeyValuePair<int, string>, int>(i, j, pos, page));
+                //            }
+                //        }
+                //    }
+                //}
+                //do
+                //{
+                //    await GatherHistoricalDataAndStore();
+                //} while (DataRequests.Count > 0);
+                //Console.WriteLine("DONE!");
+                //Console.ReadLine();
+                await GatherProjectionHistoryData();
             }).Wait();
         }
+
+        public static async Task GatherProjectionHistoryData()
+        {
+            HttpClient client = new HttpClient();
+            using (FileStream fs = File.Open("playerProjections.csv", FileMode.Create))
+            {
+                using (var writer = new StreamWriter(fs))
+                {
+                    for (int year = 2015; year <= 2016; year++)
+                    {
+                        for(int week = 1; week <= 17; week++)
+                        {
+                            foreach(var analyst in FF_ANALYSTS)
+                            {
+                                var requestBody = new FFAnalyticsProjectionsRequest();
+                                requestBody.Season = year;
+                                requestBody.Week = week.ToString();
+                                requestBody.Analysts = new List<FFAnalyst>() { analyst };
+
+                                try
+                                {
+                                    var stringPayload = JsonConvert.SerializeObject(requestBody);
+                                    var lastBracket = stringPayload.LastIndexOf('}');
+                                    stringPayload = stringPayload.Insert(lastBracket, "," + FFAnalyticsProjectionsRequest.SCORING_RULES);
+                                    var httpContent = new StringContent(stringPayload, Encoding.UTF8, "application/json");
+                                    var response = await client.PostAsync(FF_ANALYSTS_BASE_ADDRESS, httpContent);
+                                    var result = await response.Content.ReadAsStringAsync();
+                                    var jsonResult = JsonConvert.DeserializeObject<FFAnalyticsProjectionsResponse>(result);
+                                    if (jsonResult != null && jsonResult.PlayerProjections != null)
+                                    {
+                                        await StorePredictionInDb(jsonResult.PlayerProjections, week, year, analyst.Name.ToLower(), writer);
+                                    }
+                                }
+                                catch(Exception ex)
+                                {
+                                    Console.WriteLine(string.Format("Fail - Year: {0}, Week: {1}, Analyst: {2}", year, week, analyst.Name));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Console.WriteLine("***** DONE ******");
+            Console.ReadLine();
+            return;
+        }
+
+        public static async Task StorePredictionInDb(List<PlayerProjection> projections, int week, int year, string source, StreamWriter writer)
+        {
+            foreach(var proj in projections)
+            {
+                var playerName = NormalizeName(proj.PlayerName);
+                var projValue = proj.Points;
+                var projSource = source.Replace(" ", string.Empty).ToLower();
+                var playerPos = (int)TranslateToPositionEnum(proj.PlayerPositon.ToLower());
+                Nullable <int> playerId = null;
+                //var output = string.Format("{0},{1},{2},{3},{4},{5}",
+                //    playerName, playerPos, year, week, projValue, projSource);
+                //writer.WriteLine(output);
+
+                // Attempt to find a player object with the fetched name. If it doesn't exist there is a problem.
+                using (SqlConnection conn = new SqlConnection(CONNECTION_STRING))
+                {
+                    string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
+                    SqlCommand command = new SqlCommand(queryString, conn);
+                    command.Parameters.AddWithValue("@playerName", playerName);
+                    command.Parameters.AddWithValue("@position", playerPos);
+                    conn.Open();
+                    SqlDataReader reader = command.ExecuteReader();
+                    try
+                    {
+                        if (reader.HasRows)
+                        {
+                            while (reader.Read())
+                            {
+                                playerId = (int)reader["id"];
+                            }
+                        }
+                        else
+                        {
+                            // There are no player names with the matching name, insert a new row.
+                            Console.WriteLine(string.Format("ERROR - No Player Found : {0}", playerName));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var x = ex;
+                    }
+                    finally
+                    {
+                        // Always call Close when done reading.
+                        reader.Close();
+                    }
+
+                    if (playerId.HasValue)
+                    {
+                        string insertProjQuery =
+                            "INSERT INTO [dbo].[player_projections](player_id, projection_value, source, nfl_week, year)" +
+                            " VALUES (@playerId, @score, @source, @week, @year)";
+                        SqlCommand insertProjCommand = new SqlCommand(insertProjQuery, conn);
+                        insertProjCommand.Parameters.AddWithValue("@playerId", playerId.Value);
+                        insertProjCommand.Parameters.AddWithValue("@score", projValue);
+                        insertProjCommand.Parameters.AddWithValue("@week", week);
+                        insertProjCommand.Parameters.AddWithValue("@year", year);
+                        insertProjCommand.Parameters.AddWithValue("@source", projSource);
+                        var rowInserted = insertProjCommand.ExecuteNonQuery() > 0;
+                        if (!rowInserted)
+                        {
+                            Console.WriteLine(string.Format("Insert Failed - PlayerId: {0}, Week: {1}, Year: {2}", playerId.Value, week, year));
+                        }
+                    }
+
+                    conn.Close();
+                }
+            }
+        }
+
         public static async Task GatherInfoAndGenerateAggregateFile()
         {
             var playerInfo = FetchPlayerInfoData();
@@ -63,39 +215,48 @@ namespace PlayerDataAggregator
         {
             // Gather information from Numberfire tables
             HttpClient client = new HttpClient();
-            for (int i = 2000; i < 2017; i++)
+            var failedRequests = new List<Tuple<int, int, KeyValuePair<int, string>, int>>();
+            foreach (var request in DataRequests)
             {
-                foreach (var pos in FF_TODAY_POSITIONS)
+                try
                 {
-                    for (int j = 1; j <= 17; j++)
+                    var year = request.Item1;
+                    var week = request.Item2;
+                    var pos = request.Item3;
+                    var page = request.Item4;
+                    var httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, year, week, pos.Key, FF_TODAY_LEAGUE_ID, page));
+                    var playerResult = await httpResponse.Content.ReadAsStringAsync();
+                    HtmlDocument playerDoc = new HtmlDocument();
+                    playerDoc.LoadHtml(playerResult);
+                    var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
+                    var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
+                    switch (pos.Value)
                     {
-                        var httpResponse = await client.GetAsync(string.Format(FF_TODAY_BASE_ADDRESS, i, j, pos.Key, FF_TODAY_LEAGUE_ID));
-                        var playerResult = await httpResponse.Content.ReadAsStringAsync();
-                        HtmlDocument playerDoc = new HtmlDocument();
-                        playerDoc.LoadHtml(playerResult);
-                        var table = playerDoc.DocumentNode.SelectSingleNode("/html[1]/body[1]/center[1]/table[2]/tr[2]/td[1]/table[6]/tr[1]/td[1]/table[1]");
-                        var playerRows = table.Descendants("tr").Where(r => !r.Attributes.Contains("class"));
-                        switch (pos.Value)
-                        {
-                            case "qb":
-                                HandleQBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "rb":
-                                HandleRBData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "wr":
-                                HandleWRData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "te":
-                                HandleTEData(playerRows.ToList(), j + 1, i);
-                                break;
-                            case "def":
-                                HandleDefData(playerRows.ToList());
-                                break;
-                        }
+                        case "qb":
+                            HandleQBData(playerRows.ToList(), week, year);
+                            break;
+                        case "rb":
+                            HandleRBData(playerRows.ToList(), week, year);
+                            break;
+                        case "wr":
+                            HandleWRData(playerRows.ToList(), week, year);
+                            break;
+                        case "te":
+                            HandleTEData(playerRows.ToList(), week, year);
+                            break;
+                        case "def":
+                            HandleDefData(playerRows.ToList());
+                            break;
                     }
                 }
+                catch(Exception ex)
+                {
+                    Console.WriteLine(string.Format("Failure - Year: {0}, Week: {1}, Pos: {2}", request.Item1, request.Item2, request.Item3));
+                    failedRequests.Add(request);
+                }
             }
+            // Bubble the failed requests back up so unlimited additional attempts can be made.
+            DataRequests = failedRequests;
         }
 
         private static void HandleQBData(List<HtmlNode> playerRows, int week, int year)
@@ -219,7 +380,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.rb).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try
@@ -311,7 +472,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.wr).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try
@@ -400,7 +561,7 @@ namespace PlayerDataAggregator
                     string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
                     SqlCommand command = new SqlCommand(queryString, conn);
                     command.Parameters.AddWithValue("@playerName", playerName);
-                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.qb).ToString());
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.te).ToString());
                     conn.Open();
                     SqlDataReader reader = command.ExecuteReader();
                     try

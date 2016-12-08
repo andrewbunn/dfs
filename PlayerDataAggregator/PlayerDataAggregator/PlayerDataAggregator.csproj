@@ -51,6 +51,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FFAnalyticsProjectionsRequest.cs" />
+    <Compile Include="FFAnalyticsProjectionsResponse.cs" />
     <Compile Include="InjuryData.cs" />
     <Compile Include="PerformanceData.cs" />
     <Compile Include="PlayerInfoData.cs" />
