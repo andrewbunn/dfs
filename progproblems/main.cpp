@@ -66,7 +66,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 110000
+#define LINEUPCOUNT 300000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -541,19 +541,55 @@ void ownershipDriver(string playersFile, string ownershipFile)
     }
 }
 
+float mixPlayerProjections(Player& p, float numberfire, float fpros, float yahoo)
+{
+    if (p.pos == 0)
+    {
+        // for QB: probably use close to even average of yahoo, cbs, stats, numberfire
+        // could ignore espn when dling data?
+        return fpros * .8333 + yahoo * .1666;
+    }
+    else
+    {
+        // for now just 70% yahoo, 30% fpros (fpros includes numberfire)
+        return yahoo * .7 + fpros * .3;
+    }
+}
+
 void removeDominatedPlayers(string filein, string fileout)
 {
     vector<Player> players = parsePlayers(filein);
 
-    unordered_map<string, float> differencing = parseProjections("diffs.csv");
+    unordered_map<string, float> yahoo = parseYahooStats();
+    unordered_map<string, float> fpros = parseProsStats();
+    cout << "Mixing projections" << endl;
     for (auto& p : players)
     {
-        auto itDiff = differencing.find(p.name);
+        auto itpros = fpros.find(p.name);
+        auto ity = yahoo.find(p.name);
+
+        // linear reg models here:
 
         // players we dont want to include can just have large negative diff
-        if (itDiff != differencing.end())
+        if (itpros != fpros.end() && ity != yahoo.end())
         {
-            p.proj += itDiff->second;
+            if (p.name == "david johnson" && p.pos == 3)
+            {
+                p.proj = 0.f;
+            }
+            else
+            {
+                p.proj = mixPlayerProjections(p, p.proj, itpros->second, ity->second);
+            }
+        }
+        else
+        {
+            cout << p.name << endl;
+            if (p.pos != 4)
+            {
+                // ignore player if it wasnt high on yahoo/pros?
+                p.proj = 0.f; 
+            }
         }
     }
 
@@ -2049,6 +2085,17 @@ int main(int argc, char* argv[]) {
         {
             greedyLineupSelector();
         }
+
+        if (strcmp(argv[1], "parsehistproj") == 0)
+        {
+            parseHistoricalProjFiles();
+        }
+
+        if (strcmp(argv[1], "parsefpros") == 0)
+        {
+            parseProsStats();
+        }
+
     }
     return 0;
 }

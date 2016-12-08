@@ -22,3 +22,6 @@ vector<tuple<string, int, int>> parseCosts(string filename);
 unordered_map<string, float> parseProjections(string filename);
 vector<pair<string, float>> parseOwnership(string filename);
 vector<string> parseRanks(string filename);
+void parseHistoricalProjFiles();
+unordered_map<string, float> parseProsStats();
+unordered_map<string, float> parseYahooStats();
