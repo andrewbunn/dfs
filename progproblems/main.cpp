@@ -30,6 +30,7 @@
 #include "lcg.h"
 #include <cassert>
 #include <cmath>
+#include <mkl.h>
 
 __m256 xorshift128plus_avx2(__m256i &state0, __m256i &state1)
 {
@@ -547,12 +548,12 @@ float mixPlayerProjections(Player& p, float numberfire, float fpros, float yahoo
     {
         // for QB: probably use close to even average of yahoo, cbs, stats, numberfire
         // could ignore espn when dling data?
-        return fpros * .8333 + yahoo * .1666;
+        return fpros * .77 + yahoo * .13 + numberfire * .1;
     }
     else
     {
         // for now just 70% yahoo, 30% fpros (fpros includes numberfire)
-        return yahoo * .7 + fpros * .3;
+        return yahoo * .5 + fpros * .5;
     }
 }
 
@@ -988,20 +989,32 @@ pair<float, float> runSimulation(const vector<vector<uint8_t>>& lineups, const v
     return make_pair(expectedValue, stdDev);
 }
 
-pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const int corrIdx)
+pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, const vector<Player>& allPlayers, const float* projs, const float*  stdevs, const int corrIdx)
 {
     float winningsTotal = 0.f;
     float runningAvg = 0.f;
     bool converged = false;
-    static vector<float> simulationResults(SIMULATION_COUNT);
-    parallel_transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, corrIdx](const float&)
-    {
-        static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-        static thread_local random_device rdev;
-        static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
 
-        alignas(256) array<float, 64> playerStandardNormals;
-        normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
+    unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
+    const int n = 64* SIMULATION_COUNT;
+    alignas(256) unique_ptr<float[]> standardNormals(new float[n]);
+    VSLStreamStatePtr stream;
+    vslNewStream(&stream, VSL_BRNG_SFMT19937, seed2);
+    vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
+        stream, n, &standardNormals[0], 0.0, 1.0);
+    vslDeleteStream(&stream);
+
+    static vector<float> simulationResults(SIMULATION_COUNT);
+    transform(begin(simulationResults), end(simulationResults), begin(simulationResults), [&lineups, &allPlayers, &projs, &stdevs, &standardNormals, corrIdx](const float& where)
+    {
+        //static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+        //static thread_local random_device rdev;
+        //static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
+
+        const int index = &where - &simulationResults[0];
+        const float* playerStandardNormals = &standardNormals[64 * index];
+        //alignas(256) array<float, 64> playerStandardNormals;
+        //normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
         array<float, 64> playerScores;
         int i;
         for (i = 0; i < corrIdx; i++)
@@ -1017,12 +1030,15 @@ pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, c
                 float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
                 playerScores[i] = p.proj + (p.stdDev * corrZ);
             }
-
             if (playerScores[i] < 0)
             {
                 playerScores[i] = 0.f;
             }
         }
+        // assumes corrIdx < size
+        //int len = allPlayers.size() - corrIdx;
+        //vsMul(len, stdevs + corrIdx, playerStandardNormals + corrIdx, &playerScores[corrIdx]);
+        //vsAdd(len, projs + corrIdx, &playerScores[corrIdx], &playerScores[corrIdx]);
         for (; i < allPlayers.size(); i++)
         {
             const Player& p = allPlayers[i];
@@ -1064,7 +1080,6 @@ pair<float, float> runSimulationMaxWin(const vector<vector<uint8_t>>& lineups, c
     float expectedValue = winningsTotal / SIMULATION_COUNT;
 
     float stdDev = 1.f;
-
     return make_pair(expectedValue, stdDev);
 }
 
@@ -1483,6 +1498,76 @@ void lineupSelector(const string lineupsFile, const string playersFile)
     myfile.close();
 }
 
+vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, int>& playerCounts, vector<pair<uint8_t, float>>& ownershipLimits)
+{
+    vector<string> playersToRemove;
+    for (auto & x : ownershipLimits)
+    {
+        auto it = playerCounts.find(x.first);
+        if (it != playerCounts.end())
+        {
+            float percentOwned = (float)it->second / (float)TARGET_LINEUP_COUNT;
+            if (percentOwned >= x.second)
+            {
+                playersToRemove.push_back(p[x.first].name);
+            }
+        }
+    }
+    return playersToRemove;
+}
+
+double phi(double x)
+{
+    // constants
+    double a1 = 0.254829592;
+    double a2 = -0.284496736;
+    double a3 = 1.421413741;
+    double a4 = -1.453152027;
+    double a5 = 1.061405429;
+    double p = 0.3275911;
+
+    // Save the sign of x
+    int sign = 1;
+    if (x < 0)
+        sign = -1;
+    x = fabs(x) / sqrt(2.0);
+
+    // A&S formula 7.1.26
+    double t = 1.0 / (1.0 + p*x);
+    double y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*exp(-x*x);
+
+    return 0.5*(1.0 + sign*y);
+}
+
+
+vector<string> determineOverweightPlayers(vector<Player>& p, unordered_map<uint8_t, int>& playerCounts, int numLineups)
+{
+    vector<string> playersToRemove;
+    for (auto & x : playerCounts)
+    {
+        Player& player = p[x.first];
+        // calculate z:
+        const double threshold = 8.0;
+        const double maxRisk = 0.15;
+        double z = (threshold - (double)player.proj) / (double)player.stdDev;
+        double prob = phi(z);
+        double weight = (double)x.second / (double)numLineups;
+        // need to factor in value at some point
+        // factor in position as well?
+        double val = prob * weight;
+        if (val > maxRisk)
+        {
+            playersToRemove.push_back(p[x.first].name);
+            cout << p[x.first].name << ": " << val << ",";
+        }
+    }
+    if (playersToRemove.size() > 0)
+    {
+        cout << endl;
+    }
+    return playersToRemove;
+}
+
 void greedyLineupSelector()
 {
     vector<Player> p = parsePlayers("players.csv");
@@ -1514,9 +1599,14 @@ void greedyLineupSelector()
 
     unordered_map<string, uint8_t> playerIndices;
     unordered_map<uint8_t, int> playerCounts;
+    // vectorized projection and stddev data
+    vector<float> projs;
+    vector<float> stdevs;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
+        projs.push_back(x.proj);
+        stdevs.push_back(x.stdDev);
     }
     vector<pair<uint8_t, float>> ownershipLimits;
     for (auto& x : ownership)
@@ -1537,6 +1627,8 @@ void greedyLineupSelector()
         stream << "output-" << i << ".csv";
         allLineups[i] = parseLineups(stream.str(), playerIndices);
     }*/
+
+    vector<string> currentPlayersRemoved;
     
 
     ofstream myfile;
@@ -1547,23 +1639,24 @@ void greedyLineupSelector()
     int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
-        lineup_set set = bestset;
+        //lineup_set set = bestset;
         bestset.ev = 0.f; // reset so we accept new lineup
         //for (auto & lineupbucket : allLineups)
         {
             //for (auto & lineup : lineupbucket)
-            for (auto & lineup : allLineups)
+            //for (auto & lineup : allLineups)
+            vector<lineup_set> results(allLineups.size());
+            parallel_transform(allLineups.begin(), allLineups.end(), results.begin(),[&p, &corrIdx, &bestset, &projs, &stdevs](vector<uint8_t>& lineup)
             {
+                lineup_set set = bestset;
                 set.set.push_back(lineup);
-                tie(set.ev, set.stdev) = runSimulationMaxWin(set.set, p, corrIdx);
+                tie(set.ev, set.stdev) = runSimulationMaxWin(set.set, p, &projs[0], &stdevs[0], corrIdx);
                 //tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
-                if (set.ev > bestset.ev)
-                //if (set.getSharpe() > bestset.getSharpe())
-                {
-                    bestset = set;
-                }
-                set.set.erase(set.set.end() - 1);
-            }
+                return set;
+            });
+            // comparator is backwards currently, can fix
+            auto it = min_element(results.begin(), results.end());
+            bestset = *it;
         }
         auto end = chrono::steady_clock::now();
         auto diff = end - start;
@@ -1584,23 +1677,12 @@ void greedyLineupSelector()
                 it->second++;
             }
         }
+        //vector<string> playersToRemove;
+        vector<string> playersToRemove = enforceOwnershipLimits(p, playerCounts, ownershipLimits);
 
-        vector<string> playersToRemove;
-        for (auto & x : ownershipLimits)
+        if (currentPlayersRemoved != playersToRemove)
         {
-            auto it = playerCounts.find(x.first);
-            if (it != playerCounts.end())
-            {
-                float percentOwned = (float)it->second / (float)TARGET_LINEUP_COUNT;
-                if (percentOwned >= x.second)
-                {
-                    playersToRemove.push_back(p[x.first].name);
-                }
-            }
-        }
-
-        if (playersToRemove.size() > 0)
-        {
+            currentPlayersRemoved = playersToRemove;
             double msTime = 0;
             lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
             // faster to parse lineup_list to allLineups

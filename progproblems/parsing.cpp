@@ -340,7 +340,7 @@ vector<string> parseRanks(string filename)
     return result;
 }
 
-#define POSFILTER(pos) ((pos) >= 0)
+#define POSFILTER(pos) ((pos) == 0)
 unordered_map<string, float> parseFantasyResults()
 {
     ifstream file("playersHistorical.csv");
@@ -607,7 +607,7 @@ void parseHistoricalProjFiles()
         if (allProjs.size() == datasetSize - 2)
         {
             float STATSval = entry.second;
-            
+            /*
             STATSval -= allProjs[ESPNTable] * .25;
             STATSval -= allProjs[yahooTable] * .25;
             STATSval -= allProjs[cbsTable] * .25;
@@ -615,7 +615,7 @@ void parseHistoricalProjFiles()
             if (STATSval <= 0)
             {
                 STATSval = 0.f;
-            }
+            }*/
             allProjs.push_back(STATSval);
             float avg = accumulate(allProjs.begin(), allProjs.end(), 0.f) / (float)allProjs.size();
             auto it = results.find(entry.first);
