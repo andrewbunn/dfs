@@ -1,0 +1,11 @@
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\GeneratePlayerData.exe.config
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Release\GeneratePlayerData.exe
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Release\GeneratePlayerData.pdb
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\GeneratePlayerData.exe
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\GeneratePlayerData.pdb
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\HtmlAgilityPack.dll
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\Newtonsoft.Json.dll
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\HtmlAgilityPack.pdb
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\HtmlAgilityPack.xml
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\bin\Release\Newtonsoft.Json.xml
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Release\GeneratePlayerData.csprojResolveAssemblyReference.cache

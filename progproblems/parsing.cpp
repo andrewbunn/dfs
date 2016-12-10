@@ -680,7 +680,7 @@ void parseHistoricalProjFiles()
 unordered_map<string, float> parseProsStats()
 {
     unordered_map<string, float> results;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i <= 4; i++)
     {
         ostringstream stream;
         stream << "fpproj-" << i;
@@ -692,6 +692,22 @@ unordered_map<string, float> parseProsStats()
             normalizeName(tokens[0]);
             int pos = i;
             ostringstream id;
+            float proj = stof(tokens[tokens.size() - 1]);
+            float rec = 0.f;
+            if (i == 0)
+            {
+            }
+            else if (i == 1 || i == 2)
+            {
+                rec = stof(tokens[4]);
+            }
+            else if (i == 3)
+            {
+                rec = stof(tokens[1]);
+            }
+
+            proj += rec * .5;
+            /*
             float payds = 0.f;
             float patds = 0.f;
             float ints = 0.f;
@@ -728,14 +744,19 @@ unordered_map<string, float> parseProsStats()
             }
             float proj = payds * .04 + patds * 4 + ints * -1 + ruyds * .1 + rutds * 6 + fls * -2 + rec * .5 + reyds * .1 + retds * 6;
             // may also want to "prune" projections here
-
+            */
             if (tokens[0] != "david johnson" || pos == 1)
             {
                 if (results.find(tokens[0]) != results.end())
                 {
-                    cout << tokens[0] << endl;;
+                    cout << tokens[0] << endl;
+                    if (tokens[0] == "cleveland")
+                    {
+                        // player named cleveland
+                        results[tokens[0]] = proj;
+                    }
                     //if (tokens[0] != "ty montgomery" && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
-                    if (tokens[0] != "ty montgomery" && proj > 5)
+                    else if (tokens[0] != "ty montgomery" && proj > 5)
                     {
                         throw invalid_argument("Invalid player: " + tokens[0]);
                     }
@@ -756,7 +777,7 @@ unordered_map<string, float> parseProsStats()
 unordered_map<string, float> parseYahooStats()
 {
     unordered_map<string, float> results;
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i <= 4; i++)
     {
         ostringstream stream;
         stream << "yahooproj-" << i;
@@ -769,7 +790,7 @@ unordered_map<string, float> parseYahooStats()
             int pos = i;
             ostringstream id;
             float proj = stof(tokens[1]);
-            float rec = stof(tokens[9]);
+            float rec = pos < 4 ? stof(tokens[9]) : 0.f;
             proj += rec * .5;
             /*
             float payds = stof(tokens[1]);
