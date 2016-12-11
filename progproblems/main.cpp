@@ -67,7 +67,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 20000
+#define LINEUPCOUNT 120000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -552,7 +552,7 @@ float mixPlayerProjections(Player& p, float numberfire, float fpros, float yahoo
     }
     else if (p.pos == 4)
     {
-        return fpros * .833 + yahoo * .166;
+        return fpros * .4 + yahoo * .2 + numberfire * .4;
     }
     else
     {
@@ -601,6 +601,9 @@ void removeDominatedPlayers(string filein, string fileout)
 
     ofstream myfile;
     myfile.open(fileout);
+
+    ofstream allPlayers;
+    allPlayers.open("allplayers.csv");
     // for a slot, if there is a player cheaper cost but > epsilon score, ignore
     // no def for now?
     for (int i = 0; i <= 4; i++)
@@ -612,6 +615,21 @@ void removeDominatedPlayers(string filein, string fileout)
 
         // sort by value, descending
         sort(positionPlayers.begin(), positionPlayers.end(), [](Player& a, Player& b) { return a.proj > b.proj; });
+
+        for (auto& p : positionPlayers)
+        {
+            allPlayers << p.name;
+            allPlayers << ",";
+            allPlayers << (static_cast<int>(p.cost) + 10 + ((p.pos == 0) ? 10 : 0));
+            allPlayers << ",";
+            allPlayers << static_cast<float>(p.proj);
+            allPlayers << ",";
+            allPlayers << static_cast<int>(p.pos);
+            allPlayers << ",";
+            allPlayers << static_cast<float>(p.stdDev);
+            allPlayers << ",";
+            allPlayers << endl;
+        }
 
         // biggest issue is for rb/wr we dont account for how many we can use.
         for (int j = 0; j < positionPlayers.size(); j++)
@@ -657,6 +675,7 @@ void removeDominatedPlayers(string filein, string fileout)
             myfile << endl;
         }
     }
+    allPlayers.close();
     myfile.close();
 }
 
@@ -1446,14 +1465,32 @@ void splitLineups(const string lineups)
 {
     vector<vector<string>> allLineups;
     allLineups = parseLineupString(lineups);
-
+    vector<vector<string>> originalOrder = allLineups;
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     default_random_engine generator(seed1);
     shuffle(allLineups.begin(), allLineups.end(), generator);
+
+    vector<vector<string>> setA;
+    vector<vector<string>> setB;
+
+    int i = 0;
+    partition_copy(allLineups.begin(), allLineups.end(), back_inserter(setA), back_inserter(setB), [&i](vector<string>& l)
+    {
+        bool setA = i++ < 13;
+        return setA;
+    });
+    sort(setA.begin(), setA.end(), [&originalOrder](vector<string>& la, vector<string>& lb)
+    {
+        return find(originalOrder.begin(), originalOrder.end(), la) < find(originalOrder.begin(), originalOrder.end(), lb);
+    });
+    sort(setB.begin(), setB.end(), [&originalOrder](vector<string>& la, vector<string>& lb)
+    {
+        return find(originalOrder.begin(), originalOrder.end(), la) < find(originalOrder.begin(), originalOrder.end(), lb);
+    });
+
     ofstream myfile;
     myfile.open("outputsetSplit.csv");
-    int i = 0;
-    for (auto& lineup : allLineups)
+    for (auto& lineup : setA)
     {
         for (auto& x : lineup)
         {
@@ -1461,13 +1498,19 @@ void splitLineups(const string lineups)
             myfile << ",";
         }
         myfile << endl;
-        i++;
-        if (i == 14)
-        {
-            myfile << endl;
-        }
     }
     myfile << endl;
+    myfile << endl;
+
+    for (auto& lineup : setB)
+    {
+        for (auto& x : lineup)
+        {
+            myfile << x;
+            myfile << ",";
+        }
+        myfile << endl;
+    }
 
     myfile.close();
 
@@ -1798,7 +1841,7 @@ void greedyLineupSelector()
             }
         }
 
-        if (i > 3 && i % 2 == 0)
+        if (i > 3)
         {
             uint64_t disallowedSet = 0;
             vector<string> playersToRemove = enforceOwnershipLimits(p, playerCounts, ownershipLimits, bestset.set.size(), disallowedSet);
