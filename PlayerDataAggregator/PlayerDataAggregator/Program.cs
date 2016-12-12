@@ -39,7 +39,7 @@ namespace PlayerDataAggregator
 
         private static readonly Dictionary<int, string> FF_TODAY_POSITIONS = new Dictionary<int, string>()
         {
-            { 10, "qb" }, { 20, "rb" }, { 30, "wr" }, { 40, "te" }, { 50, "def" }
+            { 10, "qb" }, { 20, "rb" }, { 30, "wr" }, { 40, "te" }, { 99, "def" }
         };
 
         private static List<Tuple<int, int, KeyValuePair<int, string>, int>> DataRequests = new List<Tuple<int, int, KeyValuePair<int, string>, int>>();
@@ -62,26 +62,24 @@ namespace PlayerDataAggregator
             Task.Run(async () =>
             {
                 //await GatherInfoAndGenerateAggregateFile();
-                //for (int i = 2000; i < 2017; i++)
-                //{
-                //    foreach (var pos in FF_TODAY_POSITIONS)
-                //    {
-                //        for (int j = 1; j <= 17; j++)
-                //        {
-                //            for (int page = 0; page < 4; page++)
-                //            {
-                //                DataRequests.Add(new Tuple<int, int, KeyValuePair<int, string>, int>(i, j, pos, page));
-                //            }
-                //        }
-                //    }
-                //}
-                //do
-                //{
-                //    await GatherHistoricalDataAndStore();
-                //} while (DataRequests.Count > 0);
-                //Console.WriteLine("DONE!");
-                //Console.ReadLine();
-                await GatherProjectionHistoryData();
+                for (int i = 2000; i < 2017; i++)
+                {
+                    foreach (var pos in FF_TODAY_POSITIONS)
+                    {
+                        for (int j = 1; j <= 17; j++)
+                        {
+                            for (int page = 0; page < 4; page++)
+                            {
+                                DataRequests.Add(new Tuple<int, int, KeyValuePair<int, string>, int>(i, j, pos, page));
+                            }
+                        }
+                    }
+                }
+                do
+                {
+                    await GatherHistoricalDataAndStore();
+                } while (DataRequests.Count > 0);
+                //await GatherProjectionHistoryData();
             }).Wait();
         }
 
@@ -245,7 +243,7 @@ namespace PlayerDataAggregator
                             HandleTEData(playerRows.ToList(), week, year);
                             break;
                         case "def":
-                            HandleDefData(playerRows.ToList());
+                            HandleDefData(playerRows.ToList(), week, year);
                             break;
                     }
                 }
@@ -623,9 +621,98 @@ namespace PlayerDataAggregator
             }
         }
 
-        private static void HandleDefData(List<HtmlNode> playerRows)
+        private static void HandleDefData(List<HtmlNode> playerRows, int week, int year)
         {
-            return;
+            foreach (var row in playerRows)
+            {
+                var values = row.Descendants("td").ToArray();
+                var trimmedValues = new List<string>();
+                foreach (var val in values)
+                    trimmedValues.Add(Regex.Replace(val.InnerText, @"<[^>]+>|&nbsp;", "").Trim());
+                var playerName = NormalizeName(trimmedValues[0]);
+                var sacks = trimmedValues[2];
+                var fumblesRecovered = trimmedValues[3];
+                var interceptions = trimmedValues[4];
+                var tds = trimmedValues[5];
+                var pointsAllowed = trimmedValues[6];
+                var passingAllowed = (int)Convert.ToDecimal(trimmedValues[7]);
+                var rushingAllowed = (int)Convert.ToDecimal(trimmedValues[8]);
+                var safeties = trimmedValues[9];
+                var kickingTds = trimmedValues[10];
+                var points = trimmedValues[11];
+                Nullable<int> playerId = null;
+
+                // Attempt to find a player object with the fetched name. If it exists, use that player id.
+                // If it doesnt, create the new player and use its new id
+                using (SqlConnection conn = new SqlConnection(CONNECTION_STRING))
+                {
+                    string queryString = "SELECT id FROM  [dbo].[players] WHERE name = @playerName AND position = @position";
+                    SqlCommand command = new SqlCommand(queryString, conn);
+                    command.Parameters.AddWithValue("@playerName", playerName);
+                    command.Parameters.AddWithValue("@position", ((int)PositionEnum.def).ToString());
+                    conn.Open();
+                    SqlDataReader reader = command.ExecuteReader();
+                    try
+                    {
+                        if (reader.HasRows)
+                        {
+                            while (reader.Read())
+                            {
+                                playerId = (int)reader["id"];
+                            }
+                        }
+                        else
+                        {
+                            // There are no player names with the matching name, insert a new row.
+                            string insertPlayerQuery = "INSERT INTO [dbo].[players](name, position) output INSERTED.ID VALUES (@playerName, @position)";
+                            SqlCommand insertPlayerCommand = new SqlCommand(insertPlayerQuery, conn);
+                            insertPlayerCommand.Parameters.AddWithValue("@playerName", playerName);
+                            insertPlayerCommand.Parameters.AddWithValue("@position", ((int)PositionEnum.def).ToString());
+                            var result = insertPlayerCommand.ExecuteScalar();
+                            playerId = (int)result;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var x = ex;
+                    }
+                    finally
+                    {
+                        // Always call Close when done reading.
+                        reader.Close();
+                    }
+
+                    if (playerId.HasValue)
+                    {
+                        string insertPerformanceQuery =
+                            "INSERT INTO [dbo].[defense_performances](player_id, score_value, nfl_week, year, sacks, " +
+                            "fumble_recoveries, ints, def_tds, spec_tds, points_allowed, passing_yards_allowed, rushing_yards_allowed, safeties) " +
+                            " VALUES (@playerId, @score, @week, @year, @sacks, @fumbleRecoveries, @ints, @defTds, @specTds, @pointsAllowed, @passingAllowed, @rushingAllowed, @safeties)";
+                        SqlCommand insertPerformanceCommand = new SqlCommand(insertPerformanceQuery, conn);
+                        insertPerformanceCommand.Parameters.AddWithValue("@playerId", playerId.Value);
+                        insertPerformanceCommand.Parameters.AddWithValue("@score", points);
+                        insertPerformanceCommand.Parameters.AddWithValue("@week", week);
+                        insertPerformanceCommand.Parameters.AddWithValue("@year", year);
+                        insertPerformanceCommand.Parameters.AddWithValue("@sacks", sacks);
+                        insertPerformanceCommand.Parameters.AddWithValue("@fumbleRecoveries", fumblesRecovered);
+                        insertPerformanceCommand.Parameters.AddWithValue("@ints", interceptions);
+                        insertPerformanceCommand.Parameters.AddWithValue("@defTds", tds);
+                        insertPerformanceCommand.Parameters.AddWithValue("@specTds", kickingTds);
+                        insertPerformanceCommand.Parameters.AddWithValue("@pointsAllowed", pointsAllowed);
+                        insertPerformanceCommand.Parameters.AddWithValue("@passingAllowed", passingAllowed);
+                        insertPerformanceCommand.Parameters.AddWithValue("@rushingAllowed", rushingAllowed);
+                        insertPerformanceCommand.Parameters.AddWithValue("@safeties", safeties);
+                        var rowInserted = insertPerformanceCommand.ExecuteNonQuery() > 0;
+                    }
+                    else
+                    {
+                        // If no playerId is present something went wrong.
+                        throw new Exception("No Player ID for DEF");
+                    }
+
+                    conn.Close();
+                }
+            }
         }
 
         public static async Task<IEnumerable<PlayerInfo>> FetchPlayerInfoData()
@@ -749,9 +836,22 @@ namespace PlayerDataAggregator
                 name = string.Format("{0} {1}", nameSplit[1].Trim(), nameSplit[0].Trim());
             }
 
+            List<string> endingsToRemove = new List<string>()
+            {
+                " sr", " jr", " i", " ii", " iii", " iv", " v"
+            };
+
             Regex rgx = new Regex("[^a-z ]+");
             name = rgx.Replace(name.ToLower(), "");
-            name = name.Replace(" sr", "").Replace(" jr", "");
+
+            foreach(var str in endingsToRemove)
+            {
+                if(name.EndsWith(str))
+                {
+                    name = name.Remove(name.Length - str.Length, str.Length);
+                }
+            }
+
             name = name.Trim();
             // Check if the name is a defense/city player
             string[] dsts = {
