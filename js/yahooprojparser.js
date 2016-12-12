@@ -14,7 +14,18 @@ function getData()
 		var cols = row.getElementsByTagName("td");
 		var name = cols[1].getElementsByClassName("ysf-player-name")[0].innerText;
 		name = name.split("-")[0].trim();
-		name = name.substring(0, name.lastIndexOf(' '));
+		if (name == "New York NYJ")
+		{
+			name = "New York Jets";
+		}
+		else if (name == "New York NYG")
+		{
+			name = "New York Giants";
+		}
+		else
+		{
+			name = name.substring(0, name.lastIndexOf(' '));
+		}
 		str += name.trim();
 		var score = cols[6].innerText;
 		str += "," + score.trim();
@@ -37,7 +48,10 @@ function getData()
 	
 	var navlist = document.getElementsByClassName("pagingnavlist")[0];
 	var next = navlist.getElementsByClassName("last")[0].getElementsByTagName("a")[0];
-	next.onclick = delayGetData;
+	if (next)
+	{
+		next.onclick = delayGetData;
+	}
 	
 	window.location.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(str);
 }

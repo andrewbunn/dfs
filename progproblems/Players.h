@@ -20,7 +20,8 @@ int slots[9] = { 0, 1, 1, 2, 2, 2, 3, 5/*flex*/, 4 };
 
 
 struct Players2 {
-    uint64_t bitset;
+    uint64_t bitset1;
+    uint64_t bitset2;
     array<uint8_t, 5> posCounts;
     uint8_t totalCount;
     float value;
@@ -28,14 +29,29 @@ struct Players2 {
 
     inline bool addPlayer(int pos, float proj, int index)
     {
-        uint64_t bit = (uint64_t)1 << index;
-        if ((bitset & bit) == 0)
+        if (index > 63)
         {
-            posCounts[pos]++;
-            bitset |= bit;
-            totalCount++;
-            value += proj;
-            return true;
+            uint64_t bit = (uint64_t)1 << (index - 64);
+            if ((bitset2 & bit) == 0)
+            {
+                posCounts[pos]++;
+                bitset2 |= bit;
+                totalCount++;
+                value += proj;
+                return true;
+            }
+        }
+        else
+        {
+            uint64_t bit = (uint64_t)1 << index;
+            if ((bitset1 & bit) == 0)
+            {
+                posCounts[pos]++;
+                bitset1 |= bit;
+                totalCount++;
+                value += proj;
+                return true;
+            }
         }
         return false;
     }
@@ -59,17 +75,22 @@ struct Players2 {
     }
 
     bool Players2::operator==(const Players2& other) {
-        return bitset == other.bitset;
+        return (bitset1 == other.bitset1) && (bitset2 == other.bitset2);
     }
 
-    Players2() : totalCount(0), value(0), bitset(0), /*costOfUnfilledPositions(90),*/ hasFlex(false)
+    Players2() : totalCount(0), value(0), bitset1(0), bitset2(0), hasFlex(false)
     {
         posCounts.fill(0);
     }
 };
 
+
 bool operator==(const Players2& first, const Players2& other) {
-    return first.bitset == other.bitset;
+    return (first.bitset1 == other.bitset1) && (first.bitset2 == other.bitset2);
+}
+
+bool operator!=(const Players2& first, const Players2& other) {
+    return (first.bitset1 != other.bitset1) || (first.bitset2 != other.bitset2);
 }
 
 bool operator<(const Players2& lhs, const Players2& rhs)
@@ -78,7 +99,14 @@ bool operator<(const Players2& lhs, const Players2& rhs)
     float diff = lhs.value - rhs.value;
     if (diff == 0)
     {
-        return lhs.bitset > rhs.bitset;
+        if (lhs.bitset2 == rhs.bitset2)
+        {
+            return lhs.bitset1 > rhs.bitset1;
+        }
+        else
+        {
+            return lhs.bitset2 > rhs.bitset2;
+        }
     }
     else
     {
@@ -86,9 +114,17 @@ bool operator<(const Players2& lhs, const Players2& rhs)
     }
 }
 
-size_t players_hash(const Players2& ps)
-{
-    return hash<uint64_t>()(ps.bitset);
+typedef vector<Players2> lineup_list;
+
+
+bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other) {
+    return (first[0] == other[0]) && (first[1] == other[1]);
 }
 
-typedef vector<Players2> lineup_list;
+class set128_hash {
+public:
+    std::size_t operator() (const array<uint64_t, 2>& bs) const
+    {
+        return hash<uint64_t>()(bs[0]) ^ hash<uint64_t>()(bs[1]);
+    }
+};

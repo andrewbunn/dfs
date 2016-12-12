@@ -4,6 +4,6 @@
     <StartArguments>false</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <StartArguments>true</StartArguments>
+    <StartArguments>false</StartArguments>
   </PropertyGroup>
 </Project>
