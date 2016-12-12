@@ -84,8 +84,13 @@ struct Players2 {
     }
 };
 
+
 bool operator==(const Players2& first, const Players2& other) {
     return (first.bitset1 == other.bitset1) && (first.bitset2 == other.bitset2);
+}
+
+bool operator!=(const Players2& first, const Players2& other) {
+    return (first.bitset1 != other.bitset1) || (first.bitset2 != other.bitset2);
 }
 
 bool operator<(const Players2& lhs, const Players2& rhs)

@@ -67,7 +67,7 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 1000
+#define LINEUPCOUNT 100000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
@@ -80,6 +80,8 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 
 using namespace concurrency;
 using namespace std;
+
+static unordered_map<int, const vector<Player>> filtedFlex;
 
 // can transpose players of same type
 lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
@@ -120,7 +122,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
         {
             if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index))
             {
-                return knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? (&p - &players[pos][0]) + 1 : 0, isWR ? (&p - &players[pos][0]) + 1 : 0, skipPositionSet);
+                return knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? (&p - &players[pos][0]) + 1 : rbStartPos, isWR ? (&p - &players[pos][0]) + 1 : wrStartPos, skipPositionSet);
             }
         }
 
@@ -148,10 +150,38 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
     else
     {
-        lineup_list bestLineups(1, oldLineup);
-        for (int i = startPos; i < players[pos].size(); i++)
+        lineup_list bestLineups;// (1, oldLineup);
+        size_t targetSize;
+        if (budget == 0)
         {
-            const Player& p = players[pos][i];
+            targetSize = 3;
+            bestLineups.reserve(targetSize);
+        }
+        else if (pos == 8)
+        {
+            targetSize = players[pos].size() + 1;
+            bestLineups.reserve(targetSize);
+        }
+
+        //bestLineups.push_back(oldLineup);
+        const vector<Player>* playersArray = &players[pos];
+        if (pos == 7)
+        {
+            int index = rbStartPos * 256 + wrStartPos;
+            auto it = filtedFlex.find(index);
+            if (it != filtedFlex.end())
+            {
+                playersArray = &it->second;
+            }
+            else
+            {
+                index++;
+            }
+        }
+
+        for (int i = startPos; i < playersArray->size(); i++)
+        {
+            const Player& p = (*playersArray)[i];
             Players2 currentLineup = oldLineup;
             if (p.cost <= budget)
             {
@@ -165,7 +195,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
                     }
                     else
                     {
-                        lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : 0, isWR ? i + 1 : 0, skipPositionSet);
+                        lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : rbStartPos, isWR ? i + 1 : wrStartPos, skipPositionSet);
                         bestLineups.insert(bestLineups.end(), lineups.begin(), lineups.end());
                     }
                     // in place merge is much faster for larger sets
@@ -174,10 +204,14 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
 #else
                     sort(bestLineups.begin(), bestLineups.end());
 #endif
-                    bestLineups.erase(unique(bestLineups.begin(), bestLineups.end()), bestLineups.end());
-                    if (bestLineups.size() > LINEUPCOUNT)
+                    // pos == 8 should never exceed lineup count, and if it does thats fine
+                    if (pos < 8)
                     {
-                        bestLineups.resize(LINEUPCOUNT);
+                        bestLineups.erase(unique(bestLineups.begin(), bestLineups.end()), bestLineups.end());
+                        if (bestLineups.size() > LINEUPCOUNT)
+                        {
+                            bestLineups.resize(LINEUPCOUNT);
+                        }
                     }
                 }
             }
@@ -206,6 +240,29 @@ lineup_list generateLineupN(vector<Player>& p, vector<string>& disallowedPlayers
                     playersByPos[i].push_back(pl);
                 }
             }
+        }
+    }
+
+    // for each starting rb and wr pos pair, create players table
+    for (int i = 0; i <= playersByPos[1].size(); i++)
+    {
+        for (int j = 0; j <= playersByPos[3].size(); j++)
+        {
+            int index = i * 256 + j;
+            vector<Player> flexPlayers;
+            // add rbs from rb start pos i
+            for (int z = i; z < playersByPos[1].size(); z++)
+            {
+                flexPlayers.push_back(playersByPos[1][z]);
+            }
+            // add wrs from wr start pos j
+            for (int z = j; z < playersByPos[3].size(); z++)
+            {
+                flexPlayers.push_back(playersByPos[3][z]);
+            }
+            flexPlayers.insert(flexPlayers.end(), playersByPos[6].begin(), playersByPos[6].end());
+
+            filtedFlex.emplace(index, flexPlayers);
         }
     }
 
@@ -2174,7 +2231,6 @@ void superDriver()
 
 void evaluateScore(string filename)
 {
-
     vector<vector<string>> allLineups;
     allLineups = parseLineupString("outputset.csv");
     //vector<vector<string>> allLineups;
@@ -2196,7 +2252,7 @@ void evaluateScore(string filename)
         scores.push_back(score);
     }
 
-
+    
     {
         ofstream myfile;
         myfile.open("outputset-scores.csv");
