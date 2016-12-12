@@ -606,16 +606,9 @@ void parseHistoricalProjFiles()
 
         if (allProjs.size() == datasetSize - 2)
         {
+            // apparently fpros is actually: cbs, espn, numberfire, stats, fftoday
+            // need fftoday to split out separate
             float STATSval = entry.second;
-            
-            STATSval -= allProjs[ESPNTable] * .25;
-            STATSval -= allProjs[yahooTable] * .25;
-            STATSval -= allProjs[cbsTable] * .25;
-            STATSval *= 4.0f;
-            if (STATSval <= 0)
-            {
-                STATSval = 0.f;
-            }
             allProjs.push_back(STATSval);
             float avg = accumulate(allProjs.begin(), allProjs.end(), 0.f) / (float)allProjs.size();
             auto it = results.find(entry.first);
