@@ -1889,8 +1889,10 @@ void greedyLineupSelector(bool distributed)
         int lineupsIndexStart = 0;
         int lineupsIndexEnd = allLineups.size();
 
-        char recv_buf[max_length];
+        //char recv_buf[max_length];
         future<size_t> recv_length;
+        asio::streambuf b;
+
         if (distributed)
         {
             using asio::ip::tcp;
@@ -1921,7 +1923,7 @@ void greedyLineupSelector(bool distributed)
             //send_length.get();
 
             recv_length =
-                async_read(s, asio::buffer(recv_buf),
+                async_read_until(s, b, '\0',
                     use_future);
                 //s.async_receive(asio::buffer(recv_buf),
                 //    use_future);
@@ -1944,7 +1946,9 @@ void greedyLineupSelector(bool distributed)
             {
                 int resultIndex;
                 float resultEV;
-                sscanf(&recv_buf[0], "%d %f", &resultIndex, &resultEV);
+                std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
+                //sscanf(&recv_buf[0], "%d %f", &resultIndex, &resultEV);
+                sscanf(s.c_str(), "%d %f", &resultIndex, &resultEV);
 
                 // update bestset
                 if (resultEV > bestset.ev)
