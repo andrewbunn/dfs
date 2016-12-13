@@ -55,7 +55,8 @@ private:
     {
         auto self(shared_from_this());
 
-        socket_.async_receive(asio::buffer(data_, max_length),
+        //socket_.async_receive(asio::buffer(data_, max_length),
+        async_read(socket_, asio::buffer(data_, max_length),
             [&, this, self](std::error_code ec, std::size_t length)
         {
             if (!ec)
@@ -115,7 +116,10 @@ private:
 
         sprintf(data_, "%d %f", resultIndex, bestset.ev);
 
-        socket_.async_send(/* this should be result*/asio::buffer(data_, max_length),
+        //socket_.async_send(/* this should be result*/asio::buffer(data_, max_length),
+        //    [&, this, self](std::error_code ec, std::size_t /*length*/)
+
+        async_write(socket_,/* this should be result*/asio::buffer(data_, max_length),
             [&, this, self](std::error_code ec, std::size_t /*length*/)
         {
             if (!ec)
