@@ -1780,13 +1780,24 @@ void greedyLineupSelector(bool distributed)
     using namespace asio;
 
     io_service io_service;
+    asio::io_service::work work(io_service);
+    std::thread thread([&io_service]() { io_service.run(); });
 
-    tcp::socket s(io_service);
-    tcp::resolver resolver(io_service);
+    //tcp::socket s(io_service);
+    //tcp::resolver resolver(io_service);
+    udp::resolver resolver(io_service);
+    udp::socket socket(io_service, udp::v4());
+
+    std::future<udp::resolver::iterator> iterUdp;
+
     if (distributed)
     {
+        iterUdp =
+            resolver.async_resolve(
+        { udp::v4(), "ANBUNN5", "9000" },
+                asio::use_future);
         // can make this a future
-        connect(s, resolver.resolve({ "ANBUNN5", "9000" }));
+        //connect(s, resolver.resolve({ "ANBUNN5", "9000" }));
     }
 
     vector<Player> p = parsePlayers("players.csv");
@@ -1889,13 +1900,13 @@ void greedyLineupSelector(bool distributed)
         int lineupsIndexStart = 0;
         int lineupsIndexEnd = allLineups.size();
 
-        //char recv_buf[max_length];
+        char recv_buf[max_length];
         future<size_t> recv_length;
         asio::streambuf b;
 
         if (distributed)
         {
-            using asio::ip::tcp;
+            using asio::ip::udp;
             // just support 2 for now
             int distributedLineupStart = lineupsIndexEnd = allLineups.size() / 2;
             int distributedLineupEnd = allLineups.size();
@@ -1913,18 +1924,32 @@ void greedyLineupSelector(bool distributed)
 
             snprintf(&request_buf[0], request_buf.size(), "%d %d %d: %s", distributedLineupStart, distributedLineupEnd, bestset.set.size(), &bestsetIndices[0]);
 
-            future<size_t> send_length =
+            std::future<std::size_t> send_length =
+                socket.async_send_to(asio::buffer(request_buf),
+                    *iterUdp.get(), // ... until here. This call may block.
+                    asio::use_future);
+
+            send_length.get();
+
+            udp::endpoint sender_endpoint;
+            recv_length =
+                socket.async_receive_from(
+                    asio::buffer(recv_buf),
+                    sender_endpoint,
+                    asio::use_future);
+
+           /* future<size_t> send_length =
                 async_write(s, asio::buffer(request_buf),
-                    use_future);
+                    use_future);*/
                // s.async_send(asio::buffer(request_buf),
                 //    use_future);
 
             // do we need to wait here? or do the next part in a lambda?
             //send_length.get();
 
-            recv_length =
+            /*recv_length =
                 async_read_until(s, b, '\0',
-                    use_future);
+                    use_future);*/
                 //s.async_receive(asio::buffer(recv_buf),
                 //    use_future);
         }
@@ -1946,9 +1971,9 @@ void greedyLineupSelector(bool distributed)
             {
                 int resultIndex;
                 float resultEV;
-                std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
-                //sscanf(&recv_buf[0], "%d %f", &resultIndex, &resultEV);
-                sscanf(s.c_str(), "%d %f", &resultIndex, &resultEV);
+                //std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
+                sscanf(&recv_buf[0], "%d %f", &resultIndex, &resultEV);
+                //sscanf(s.c_str(), "%d %f", &resultIndex, &resultEV);
 
                 // update bestset
                 if (resultEV > bestset.ev)
@@ -2062,6 +2087,9 @@ void greedyLineupSelector(bool distributed)
     }
 
     myfile.close();
+
+    io_service.stop();
+    thread.join();
 }
 
 lineup_set determineOwnership()
