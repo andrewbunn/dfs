@@ -2,6 +2,19 @@
 #include <vector>
 #include <array>
 
+
+// number of lineups to generate in optimizen - TODO make parameter
+#define LINEUPCOUNT 1000
+// number of simulations to run of a set of lineups to determine expected value
+#define SIMULATION_COUNT 20000
+// number of random lineup sets to select
+#define RANDOM_SET_COUNT 10000
+// number of lineups we want to select from total pool
+#define TARGET_LINEUP_COUNT 2
+// number of pools to generate
+#define NUM_ITERATIONS_OWNERSHIP 100
+#define STOCHASTIC_OPTIMIZER_RUNS 50
+
 using namespace std;
 
 enum Position {
@@ -128,3 +141,30 @@ public:
         return hash<uint64_t>()(bs[0]) ^ hash<uint64_t>()(bs[1]);
     }
 };
+
+struct lineup_set
+{
+    vector<vector<uint8_t>> set;
+    float ev;
+    float stdev;
+    float getSharpe()
+    {
+        return (ev - (10 * set.size())) / stdev;
+    }
+    lineup_set() : ev(0.f), stdev(1.f) {}
+    lineup_set(vector<vector<uint8_t>>& s) : ev(0.f), stdev(1.f), set(s) {}
+};
+
+bool operator<(const lineup_set& lhs, const lineup_set& rhs)
+{
+    // backwards so highest value is "lowest" (best ranked lineup)
+    float diff = lhs.ev - rhs.ev;
+    if (diff == 0)
+    {
+        return lhs.stdev < rhs.stdev;
+    }
+    else
+    {
+        return diff > 0;
+    }
+}
