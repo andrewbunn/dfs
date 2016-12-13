@@ -21,6 +21,8 @@
 #include <ppl.h>
 #include <numeric>
 #include <bitset>
+#include <future>
+#define ASIO_MSVC _MSC_VER
 #include "xorshift.h"
 #include "test.h"
 #include "parsing.h"
@@ -32,6 +34,7 @@
 #include <cmath>
 #include <mkl.h>
 #include "asio.hpp"
+#include "asio/use_future.hpp"
 #include "server.h"
 
 __m256 xorshift128plus_avx2(__m256i &state0, __m256i &state1)
@@ -67,18 +70,6 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
         _mm256_store_ps(&data[i + 8], _mm256_mul_ps(radius, sintheta));
     }
 }
-
-// number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 50000
-// number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 20000
-// number of random lineup sets to select
-#define RANDOM_SET_COUNT 10000
-// number of lineups we want to select from total pool
-#define TARGET_LINEUP_COUNT 20
-// number of pools to generate
-#define NUM_ITERATIONS_OWNERSHIP 100
-#define STOCHASTIC_OPTIMIZER_RUNS 50
 
 using namespace concurrency;
 using namespace std;
@@ -1324,33 +1315,6 @@ inline vector<vector<uint8_t>> getTargetSet(vector<vector<vector<uint8_t>>>& all
     return set;
 }
 
-struct lineup_set
-{
-    vector<vector<uint8_t>> set;
-    float ev;
-    float stdev;
-    float getSharpe()
-    {
-        return (ev - (10 * set.size())) / stdev;
-    }
-    lineup_set() : ev(0.f), stdev(1.f) {}
-    lineup_set(vector<vector<uint8_t>>& s) : ev(0.f), stdev(1.f), set(s) {}
-};
-
-bool operator<(const lineup_set& lhs, const lineup_set& rhs)
-{
-    // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.ev - rhs.ev;
-    if (diff == 0)
-    {
-        return lhs.stdev < rhs.stdev;
-    }
-    else
-    {
-        return diff > 0;
-    }
-}
-
 void outputBestResults(vector<Player>& p, vector<lineup_set>& bestResults)
 {
     // output bestset
@@ -1749,8 +1713,82 @@ vector<string> determineOverweightPlayers(vector<Player>& p, unordered_map<uint8
     return playersToRemove;
 }
 
-void greedyLineupSelector()
+int selectorCore(
+    const vector<Player>& p,
+    const vector<vector<uint8_t>>& allLineups,
+    int corrIdx,
+    const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs,
+    int lineupsIndexStart, int lineupsIndexEnd, // request data
+    lineup_set& bestset    // request data
+    )
 {
+    static const int lineupChunkSize = 64;
+    bestset.ev = 0.f;
+    vector<int> lineupChunkStarts;
+    for (int j = lineupsIndexStart; j < lineupsIndexEnd; j += lineupChunkSize)
+    {
+        lineupChunkStarts.push_back(j);
+    }
+
+    vector<lineup_set> chunkResults(lineupChunkStarts.size());
+    parallel_transform(lineupChunkStarts.begin(), lineupChunkStarts.end(), chunkResults.begin(),
+        [&allLineups, &p, &bestset, &projs, &stdevs, corrIdx](int lineupChunkStart)
+    {
+        static thread_local unique_ptr<float[]> standardNormals(new float[(size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)min((size_t)lineupChunkSize, allLineups.size())]);
+        unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
+        int currentLineupCount = min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);
+        const size_t n = (size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)currentLineupCount;
+        VSLStreamStatePtr stream;
+        vslNewStream(&stream, VSL_BRNG_SFMT19937, seed2);
+        int status = vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
+            stream, n, &standardNormals[0], 0.0, 1.0);
+        vslDeleteStream(&stream);
+
+        int indexBegin = lineupChunkStart;
+        int indexEnd = indexBegin + currentLineupCount;
+
+        vector<lineup_set> results(currentLineupCount);
+        transform(allLineups.begin() + indexBegin, allLineups.begin() + indexEnd, results.begin(),
+            [&allLineups, &p, &bestset, &projs, &stdevs, corrIdx, indexBegin] (const vector<uint8_t>& lineup)
+        {
+            size_t index = &lineup - &allLineups[indexBegin];
+            const int chunk = p.size() * SIMULATION_COUNT;
+            lineup_set currentSet = bestset;
+            currentSet.set.push_back(lineup);
+            currentSet.ev = runSimulationMaxWin(
+                &standardNormals[chunk * index],
+                currentSet.set, p, &projs[0], &stdevs[0],
+                corrIdx);
+            return currentSet;
+        });
+        // comparator is backwards currently, can fix
+        auto it = min_element(results.begin(), results.end());
+        return *it;
+    });
+    auto itResult = min_element(chunkResults.begin(), chunkResults.end());
+    bestset = *itResult;
+
+    auto itLineups = find(allLineups.begin(), allLineups.end(), bestset.set[bestset.set.size() - 1]);
+    return distance(allLineups.begin(), itLineups);
+}
+
+void greedyLineupSelector(bool distributed)
+{
+    // names are probably wrong
+    // master runs base algo and calls out to "worker"
+    // for now, master is BUNN, worker is ANBUNN5
+    using namespace asio;
+
+    io_service io_service;
+
+    tcp::socket s(io_service);
+    tcp::resolver resolver(io_service);
+    if (distributed)
+    {
+        // can make this a future
+        connect(s, resolver.resolve({ "ANBUNN5", "9000" }));
+    }
+
     vector<Player> p = parsePlayers("players.csv");
     vector<pair<string, string>> corr = parseCorr("corr.csv");
 
@@ -1781,10 +1819,9 @@ void greedyLineupSelector()
     unordered_map<string, uint8_t> playerIndices;
     unordered_map<uint8_t, int> playerCounts;
 
-    const int len = SIMULATION_COUNT * 128;
     // vectorized projection and stddev data
-    static array<float, len> projs;
-    static array<float, len> stdevs;
+    static array<float, SIMULATION_VECTOR_LEN> projs;
+    static array<float, SIMULATION_VECTOR_LEN> stdevs;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
@@ -1845,60 +1882,75 @@ void greedyLineupSelector()
     // choose lineup that maximizes objective
     // iteratively add next lineup that maximizes objective.
     lineup_set bestset;
+    vector<int> bestsetIndex;
     int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
-        static const int lineupChunkSize = 64;
-        //lineup_set set = bestset;
-        bestset.ev = 0.f; // reset so we accept new lineup
-        //for (auto & lineupbucket : allLineups)
-        vector<int> lineupChunkStarts;
-        for (int j = 0; j < allLineups.size(); j += lineupChunkSize)
-        {
-            lineupChunkStarts.push_back(j);
-        }
-        vector<lineup_set> chunkResults(lineupChunkStarts.size());
-        parallel_transform(lineupChunkStarts.begin(), lineupChunkStarts.end(), chunkResults.begin(), [&p, &corrIdx, &bestset, &allLineups](int lineupChunkStart)
-        //(int lineupChunkStart = 0; lineupChunkStart < allLineups.size(); lineupChunkStart += lineupChunkSize)
-        {
-            static thread_local unique_ptr<float[]> standardNormals(new float[(size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)min((size_t)lineupChunkSize, allLineups.size())]);
-            unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
-            int currentLineupCount = min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);
-            const size_t n = (size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)currentLineupCount; // allLineups.size();
-            //unique_ptr<float[]> standardNormals(new float[n]);
-            //unique_ptr<float[]> standardNormals(new float[n]);
-            //vector<float> standardNormals(n);
-            VSLStreamStatePtr stream;
-            vslNewStream(&stream, VSL_BRNG_SFMT19937, seed2);
-            int status = vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
-                stream, n, &standardNormals[0], 0.0, 1.0);
-            vslDeleteStream(&stream);
+        int lineupsIndexStart = 0;
+        int lineupsIndexEnd = allLineups.size();
 
-            int indexBegin = lineupChunkStart;
-            int indexEnd = indexBegin + currentLineupCount;
-
-            vector<lineup_set> results(currentLineupCount);
-            transform(allLineups.begin() + indexBegin, allLineups.begin() + indexEnd, results.begin(),[&p, &corrIdx, &bestset, &allLineups, &indexBegin](vector<uint8_t>& lineup)
+        char recv_buf[max_length];
+        future<size_t> recv_length;
+        if (distributed)
+        {
+            using asio::ip::tcp;
+            // just support 2 for now
+            int distributedLineupStart = lineupsIndexEnd = allLineups.size() / 2;
+            int distributedLineupEnd = allLineups.size();
+            // convert start, end, bestset to request
+            // write async, get result?
+            array<char, max_length> bestsetIndices;
+            char* currI = &bestsetIndices[0];
+            for (int x : bestsetIndex)
             {
-                int index = &lineup - &allLineups[indexBegin];
-                const int chunk = p.size() * SIMULATION_COUNT;
-                lineup_set set = bestset;
-                set.set.push_back(lineup);
-                set.ev = runSimulationMaxWin(
-                    &standardNormals[chunk * index],
-                    set.set, p, &projs[0], &stdevs[0],
-                    //&corrCoefs[0], corrOnes, &corrFortys[0], 
-                    corrIdx);
-                //tie(set.ev, set.stdev) = runSimulation(set.set, p, corrIdx);
-                return set;
-            });
-            // comparator is backwards currently, can fix
-            auto it = min_element(results.begin(), results.end());
-            //chunkResults.push_back(*it);
-            return *it;
-        });
-        auto itResult = min_element(chunkResults.begin(), chunkResults.end());
-        bestset = *itResult;
+                sprintf(currI, "%d,", x);
+                currI = strchr(currI, ',') + 1;
+            }
+
+            array<char, max_length> request_buf;
+
+            snprintf(&request_buf[0], request_buf.size(), "%d %d %d: %s", distributedLineupStart, distributedLineupEnd, bestset.set.size(), &bestsetIndices[0]);
+
+            future<size_t> send_length =
+                s.async_send(asio::buffer(request_buf),
+                    use_future);
+
+            // do we need to wait here? or do the next part in a lambda?
+            send_length.get();
+
+            recv_length =
+                s.async_receive(asio::buffer(recv_buf),
+                    use_future);
+        }
+
+        bestsetIndex.push_back(selectorCore(
+            p,
+            allLineups,
+            corrIdx,
+            projs, stdevs,
+            lineupsIndexStart, lineupsIndexEnd, // request data
+            bestset    // request data
+        ));
+
+        if (distributed)
+        {
+            size_t result = recv_length.get();
+            // recv_buf
+            if (result > 0)
+            {
+                int resultIndex;
+                float resultEV;
+                sscanf(&recv_buf[0], "%d %f", &resultIndex, &resultEV);
+
+                // update bestset
+                if (resultEV > bestset.ev)
+                {
+                    bestsetIndex[bestsetIndex.size() - 1] = resultIndex;
+                    bestset.set[bestset.set.size() - 1] = allLineups[resultIndex];
+                }
+            }
+        }
+
         auto end = chrono::steady_clock::now();
         auto diff = end - start;
         double msTime = chrono::duration <double, milli>(diff).count();
@@ -2275,38 +2327,62 @@ void evaluateScore(string filename)
     }
 }
 
-void distributedSelectMaster()
+void distributedSelectWorker()
 {
+    vector<Player> p = parsePlayers("players.csv");
+    vector<pair<string, string>> corr = parseCorr("corr.csv");
+
+    vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
+
+    int corrIdx = 0;
+    for (auto & s : corr)
+    {
+        // move those entries to the start of the array
+        // only when we have the pair
+        auto it = find_if(p.begin(), p.end(), [&s](Player& p)
+        {
+            return p.name == s.first;
+        });
+        auto itC = find_if(p.begin(), p.end(), [&s](Player& p)
+        {
+            return p.name == s.second;
+        });
+        if (it != p.end() && itC != p.end())
+        {
+            swap(p[corrIdx].index, it->index);
+            iter_swap(it, p.begin() + corrIdx++);
+            swap(p[corrIdx].index, itC->index);
+            iter_swap(itC, p.begin() + corrIdx++);
+        }
+    }
+
+    unordered_map<string, uint8_t> playerIndices;
+    unordered_map<uint8_t, int> playerCounts;
+
+    // vectorized projection and stddev data
+    static array<float, SIMULATION_VECTOR_LEN> projs;
+    static array<float, SIMULATION_VECTOR_LEN> stdevs;
+    for (auto& x : p)
+    {
+        playerIndices.emplace(x.name, x.index);
+        projs[x.index] = (x.proj);
+        stdevs[x.index] = (x.stdDev);
+    }
+
+    vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
+
     using namespace asio;
     io_service io_service;
 
-    server s(io_service, 9000);
+    static server s(io_service, 9000,
+        p,
+        allLineups,
+        corrIdx,
+        projs,
+        stdevs
+        );
 
     io_service.run();
-}
-
-void distributedSelectChild()
-{
-    using namespace asio;
-
-    io_service io_service;
-
-    tcp::socket s(io_service);
-    tcp::resolver resolver(io_service);
-    connect(s, resolver.resolve({ "bunn", "9000" }));
-
-    std::cout << "Enter message: ";
-    char request[max_length];
-    std::cin.getline(request, max_length);
-    size_t request_length = std::strlen(request);
-    write(s, buffer(request, request_length));
-
-    char reply[max_length];
-    size_t reply_length = read(s,
-        buffer(reply, request_length));
-    std::cout << "Reply is: ";
-    std::cout.write(reply, reply_length);
-    std::cout << "\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -2483,7 +2559,7 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "greedyselect") == 0)
         {
-            greedyLineupSelector();
+            greedyLineupSelector(false);
         }
 
         if (strcmp(argv[1], "parsehistproj") == 0)
@@ -2498,12 +2574,12 @@ int main(int argc, char* argv[]) {
 
         if (strcmp(argv[1], "runmaster") == 0)
         {
-            distributedSelectMaster();
+            greedyLineupSelector(true);
         }
 
         if (strcmp(argv[1], "runchild") == 0)
         {
-            distributedSelectChild();
+            distributedSelectWorker();
         }
     }
     return 0;

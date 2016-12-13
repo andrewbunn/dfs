@@ -15,6 +15,8 @@
 progproblems/*.csv
 !progproblems/corr.csv
 !progproblems/ownership.csv
+!progproblems/players.csv
+!progproblems/output.csv
 
 Release/*
 Debug/*
