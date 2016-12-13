@@ -1899,7 +1899,7 @@ void greedyLineupSelector(bool distributed)
             int distributedLineupEnd = allLineups.size();
             // convert start, end, bestset to request
             // write async, get result?
-            array<char, max_length> bestsetIndices;
+            array<char, max_length> bestsetIndices = {};
             char* currI = &bestsetIndices[0];
             for (int x : bestsetIndex)
             {
@@ -1912,15 +1912,19 @@ void greedyLineupSelector(bool distributed)
             snprintf(&request_buf[0], request_buf.size(), "%d %d %d: %s", distributedLineupStart, distributedLineupEnd, bestset.set.size(), &bestsetIndices[0]);
 
             future<size_t> send_length =
-                s.async_send(asio::buffer(request_buf),
+                async_write(s, asio::buffer(request_buf),
                     use_future);
+               // s.async_send(asio::buffer(request_buf),
+                //    use_future);
 
             // do we need to wait here? or do the next part in a lambda?
-            send_length.get();
+            //send_length.get();
 
             recv_length =
-                s.async_receive(asio::buffer(recv_buf),
+                async_read(s, asio::buffer(recv_buf),
                     use_future);
+                //s.async_receive(asio::buffer(recv_buf),
+                //    use_future);
         }
 
         bestsetIndex.push_back(selectorCore(
