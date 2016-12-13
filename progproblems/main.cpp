@@ -1894,6 +1894,9 @@ void greedyLineupSelector(bool distributed)
     // iteratively add next lineup that maximizes objective.
     lineup_set bestset;
     vector<int> bestsetIndex;
+
+    udp::endpoint endpoint_ = *iterUdp.get();
+
     int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
@@ -1901,14 +1904,15 @@ void greedyLineupSelector(bool distributed)
         int lineupsIndexEnd = allLineups.size();
 
         char recv_buf[max_length];
-        future<size_t> recv_length;
+        //future<size_t> recv_length;
         asio::streambuf b;
 
-        if (distributed)
-        {
+       // if (distributed)
+        //{
             using asio::ip::udp;
             // just support 2 for now
-            int distributedLineupStart = lineupsIndexEnd = allLineups.size() / 2;
+            // ANBUNN5 is faster so if that's server give it bigger load:
+            int distributedLineupStart = lineupsIndexEnd = (int)((double)allLineups.size() * 0.45);
             int distributedLineupEnd = allLineups.size();
             // convert start, end, bestset to request
             // write async, get result?
@@ -1923,16 +1927,17 @@ void greedyLineupSelector(bool distributed)
             array<char, max_length> request_buf;
 
             snprintf(&request_buf[0], request_buf.size(), "%d %d %d: %s", distributedLineupStart, distributedLineupEnd, bestset.set.size(), &bestsetIndices[0]);
+            
 
             std::future<std::size_t> send_length =
                 socket.async_send_to(asio::buffer(request_buf),
-                    *iterUdp.get(), // ... until here. This call may block.
+                    endpoint_,
                     asio::use_future);
 
             send_length.get();
 
             udp::endpoint sender_endpoint;
-            recv_length =
+            future<size_t> recv_length =
                 socket.async_receive_from(
                     asio::buffer(recv_buf),
                     sender_endpoint,
@@ -1952,7 +1957,7 @@ void greedyLineupSelector(bool distributed)
                     use_future);*/
                 //s.async_receive(asio::buffer(recv_buf),
                 //    use_future);
-        }
+       // }
 
         bestsetIndex.push_back(selectorCore(
             p,
@@ -2012,7 +2017,7 @@ void greedyLineupSelector(bool distributed)
             }
         }
 
-        if (i > 1)
+        if (i > 10)
         {
             uint64_t disallowedSet1 = 0;
             uint64_t disallowedSet2 = 0;
