@@ -31,6 +31,8 @@
 #include <cassert>
 #include <cmath>
 #include <mkl.h>
+#include "asio.hpp"
+#include "server.h"
 
 __m256 xorshift128plus_avx2(__m256i &state0, __m256i &state1)
 {
@@ -67,13 +69,13 @@ static void normaldistf_boxmuller_avx(float* data, size_t count, LCG<__m256>& r)
 }
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 100000
+#define LINEUPCOUNT 50000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 20000
 // number of random lineup sets to select
 #define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
-#define TARGET_LINEUP_COUNT 60
+#define TARGET_LINEUP_COUNT 20
 // number of pools to generate
 #define NUM_ITERATIONS_OWNERSHIP 100
 #define STOCHASTIC_OPTIMIZER_RUNS 50
@@ -2273,6 +2275,40 @@ void evaluateScore(string filename)
     }
 }
 
+void distributedSelectMaster()
+{
+    using namespace asio;
+    io_service io_service;
+
+    server s(io_service, 9000);
+
+    io_service.run();
+}
+
+void distributedSelectChild()
+{
+    using namespace asio;
+
+    io_service io_service;
+
+    tcp::socket s(io_service);
+    tcp::resolver resolver(io_service);
+    connect(s, resolver.resolve({ "bunn", "9000" }));
+
+    std::cout << "Enter message: ";
+    char request[max_length];
+    std::cin.getline(request, max_length);
+    size_t request_length = std::strlen(request);
+    write(s, buffer(request, request_length));
+
+    char reply[max_length];
+    size_t reply_length = read(s,
+        buffer(reply, request_length));
+    std::cout << "Reply is: ";
+    std::cout.write(reply, reply_length);
+    std::cout << "\n";
+}
+
 int main(int argc, char* argv[]) {
     if (argc > 1)
     {
@@ -2460,6 +2496,15 @@ int main(int argc, char* argv[]) {
             parseProsStats();
         }
 
+        if (strcmp(argv[1], "runmaster") == 0)
+        {
+            distributedSelectMaster();
+        }
+
+        if (strcmp(argv[1], "runchild") == 0)
+        {
+            distributedSelectChild();
+        }
     }
     return 0;
 }
