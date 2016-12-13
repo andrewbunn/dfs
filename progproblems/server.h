@@ -56,7 +56,7 @@ private:
         auto self(shared_from_this());
 
         //socket_.async_receive(asio::buffer(data_, max_length),
-        async_read(socket_, asio::buffer(data_, max_length),
+        async_read_until(socket_, b, '\0',
             [&, this, self](std::error_code ec, std::size_t length)
         {
             if (!ec)
@@ -86,8 +86,10 @@ private:
         int lineupsIndexEnd; // request data
         int setLen;
         array<char, max_length> indicesArr;
+        std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
 
-        sscanf(data_, "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
+        //sscanf(data_, "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
+        sscanf(s.c_str(), "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
         lineup_set bestset;
 
         char* indices = &indicesArr[0];
@@ -134,6 +136,7 @@ private:
         });
     }
 
+    asio::streambuf b;
     tcp::socket socket_;
     char data_[max_length];
 };
