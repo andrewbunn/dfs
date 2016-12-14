@@ -34,7 +34,8 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
-    <UseIntelMKL>Parallel</UseIntelMKL>
+    <UseIntelMKL>Sequential</UseIntelMKL>
+    <UseILP64Interfaces>true</UseILP64Interfaces>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
