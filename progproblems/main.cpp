@@ -2267,7 +2267,8 @@ void distributedLineupSelector()
                     vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
                     if (recv_length.get() > 0)
                     {
-                        vector<Players2> distributedLineups = parseLineupsData("sharedlineups.csv");
+                        cout << "Got response from server." << endl;
+                        vector<Players2> distributedLineups = parseLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv");
                         // both lists are sorted
                         // merge lineups
                         lineups.insert(lineups.end(), distributedLineups.begin(), distributedLineups.end());
