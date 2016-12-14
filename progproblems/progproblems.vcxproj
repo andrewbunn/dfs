@@ -167,6 +167,7 @@
     <ClCompile Include="boxmuller_avx.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="parsing.cpp" />
+    <ClCompile Include="Players2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="avx_mathfun.h" />

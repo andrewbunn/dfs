@@ -25,12 +25,11 @@ enum Position {
     def = 4
 };
 
-int numPositions = 5;
+constexpr int numPositions = 5;
 
-int MaxPositionCount[5] = { 1, 3, 4, 2, 1 };
-int PositionCount[5] = { 1, 2, 3, 1, 1 };
-int slots[9] = { 0, 1, 1, 2, 2, 2, 3, 5/*flex*/, 4 };
-
+constexpr int MaxPositionCount[5] = { 1, 3, 4, 2, 1 };
+constexpr int PositionCount[5] = { 1, 2, 3, 1, 1 };
+constexpr int slots[9] = { 0, 1, 1, 2, 2, 2, 3, 5/*flex*/, 4 };
 
 struct Players2 {
     uint64_t bitset1;
@@ -98,41 +97,10 @@ struct Players2 {
 };
 
 
-bool operator==(const Players2& first, const Players2& other) {
-    return (first.bitset1 == other.bitset1) && (first.bitset2 == other.bitset2);
-}
-
-bool operator!=(const Players2& first, const Players2& other) {
-    return (first.bitset1 != other.bitset1) || (first.bitset2 != other.bitset2);
-}
-
-bool operator<(const Players2& lhs, const Players2& rhs)
-{
-    // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.value - rhs.value;
-    if (diff == 0)
-    {
-        if (lhs.bitset2 == rhs.bitset2)
-        {
-            return lhs.bitset1 > rhs.bitset1;
-        }
-        else
-        {
-            return lhs.bitset2 > rhs.bitset2;
-        }
-    }
-    else
-    {
-        return diff > 0;
-    }
-}
-
-typedef vector<Players2> lineup_list;
-
-
-bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other) {
-    return (first[0] == other[0]) && (first[1] == other[1]);
-}
+bool operator==(const Players2& first, const Players2& other);
+bool operator!=(const Players2& first, const Players2& other);
+bool operator<(const Players2& lhs, const Players2& rhs);
+bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other);
 
 class set128_hash {
 public:
@@ -155,16 +123,4 @@ struct lineup_set
     lineup_set(vector<vector<uint8_t>>& s) : ev(0.f), stdev(1.f), set(s) {}
 };
 
-bool operator<(const lineup_set& lhs, const lineup_set& rhs)
-{
-    // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.ev - rhs.ev;
-    if (diff == 0)
-    {
-        return lhs.stdev < rhs.stdev;
-    }
-    else
-    {
-        return diff > 0;
-    }
-}
+bool operator<(const lineup_set& lhs, const lineup_set& rhs);

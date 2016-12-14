@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 #include <array>
 #include <list>
@@ -77,7 +78,7 @@ using namespace std;
 static unordered_map<int, const vector<Player>> filtedFlex;
 
 // can transpose players of same type
-lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
+vector<Players2> knapsackPositionsN(int budget, int pos, const Players2 oldLineup, const vector<vector<Player>>& players, int rbStartPos, int wrStartPos, int skipPositionSet)
 {
     while (skipPositionSet != 0 && (skipPositionSet & (1 << pos)) != 0)
     {
@@ -86,7 +87,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
     if (pos >= 9)
     {
-        return lineup_list(1, oldLineup);
+        return vector<Players2>(1, oldLineup);
     }
 
 
@@ -119,14 +120,14 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
             }
         }
 
-        return lineup_list(1, currentLineup);
+        return vector<Players2>(1, currentLineup);
     };
     if (pos <= 2)
     {
-        vector<lineup_list> lineupResults(players[pos].size() - startPos);
+        vector<vector<Players2>> lineupResults(players[pos].size() - startPos);
         parallel_transform(begin(players[pos]) + startPos, end(players[pos]), begin(lineupResults), loop);
 
-        lineup_list merged;
+        vector<Players2> merged;
         merged.reserve(LINEUPCOUNT * 2);
         for (auto& lineup : lineupResults)
         {
@@ -143,7 +144,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
     else
     {
-        lineup_list bestLineups;// (1, oldLineup);
+        vector<Players2> bestLineups;// (1, oldLineup);
         size_t targetSize;
         if (budget == 0)
         {
@@ -188,7 +189,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
                     }
                     else
                     {
-                        lineup_list lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : rbStartPos, isWR ? i + 1 : wrStartPos, skipPositionSet);
+                        vector<Players2> lineups = knapsackPositionsN(budget - p.cost, pos + 1, currentLineup, players, isRB ? i + 1 : rbStartPos, isWR ? i + 1 : wrStartPos, skipPositionSet);
                         bestLineups.insert(bestLineups.end(), lineups.begin(), lineups.end());
                     }
                     // in place merge is much faster for larger sets
@@ -213,7 +214,7 @@ lineup_list knapsackPositionsN(int budget, int pos, const Players2 oldLineup, co
     }
 }
 
-lineup_list generateLineupN(const vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime)
+vector<Players2> generateLineupN(const vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime)
 {
     auto start = chrono::steady_clock::now();
     vector<vector<Player>> playersByPos(9);
@@ -314,7 +315,7 @@ lineup_list generateLineupN(const vector<Player>& p, vector<string>& disallowedP
             }
         }
     }
-    lineup_list output = knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0, 0, skipPositionsSet);
+    vector<Players2> output = knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0, 0, skipPositionsSet);
 
     auto end = chrono::steady_clock::now();
     auto diff = end - start;
@@ -322,7 +323,7 @@ lineup_list generateLineupN(const vector<Player>& p, vector<string>& disallowedP
     return output;
 }
 
-void saveLineupList(vector<Player>& p, lineup_list& lineups, string fileout, double msTime)
+void saveLineupList(vector<Player>& p, vector<Players2>& lineups, string fileout, double msTime)
 {
     ofstream myfile;
     myfile.open(fileout);
@@ -391,7 +392,7 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart)
     }
 
     double msTime = 0;
-    lineup_list lineups = generateLineupN(p, vector<string>(), startingLineup, budgetUsed, msTime);
+    vector<Players2> lineups = generateLineupN(p, vector<string>(), startingLineup, budgetUsed, msTime);
     saveLineupList(p, lineups, fileout, msTime);
 }
 
@@ -583,7 +584,7 @@ void ownershipDriver(string playersFile, string ownershipFile)
 
         {
             double msTime = 0;
-            lineup_list lineups = generateLineupN(p, excludedPlayers, startingLineup, budgetUsed, msTime);
+            vector<Players2> lineups = generateLineupN(p, excludedPlayers, startingLineup, budgetUsed, msTime);
 
             // skip over lineups where
             if (lineups[0].totalCount < 9 || lineups[0].value < 121)
@@ -1713,6 +1714,7 @@ vector<string> determineOverweightPlayers(vector<Player>& p, unordered_map<uint8
     return playersToRemove;
 }
 
+constexpr int lineupChunkSize = 64;
 int selectorCore(
     const vector<Player>& p,
     const vector<vector<uint8_t>>& allLineups,
@@ -1722,7 +1724,6 @@ int selectorCore(
     lineup_set& bestset    // request data
     )
 {
-    constexpr int lineupChunkSize = 64;
     bestset.ev = 0.f;
     vector<int> lineupChunkStarts;
     for (int j = lineupsIndexStart; j < lineupsIndexEnd; j += lineupChunkSize)
@@ -1905,8 +1906,8 @@ void greedyLineupSelector()
                 double msTime = 0;
 
                 {
-                    lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-                    // faster to parse lineup_list to allLineups
+                    vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+                    // faster to parse vector<Players2> to allLineups
                     allLineups.clear();
                     for (auto& lineup : lineups)
                     {
@@ -2036,7 +2037,7 @@ void distributedLineupSelector()
     // copy output to sharedoutput for initial runs
     {
         ifstream source("output.csv", ios::binary);
-        ofstream dest("outputshared.csv", ios::binary);
+        ofstream dest("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", ios::binary);
 
         dest << source.rdbuf();
 
@@ -2263,16 +2264,16 @@ void distributedLineupSelector()
                             senderOptimize_endpoint,
                             asio::use_future);
 
-                    lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+                    vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
                     if (recv_length.get() > 0)
                     {
-                        lineup_list distributedLineups = parseLineupsData("sharedlineups.csv");
+                        vector<Players2> distributedLineups = parseLineupsData("sharedlineups.csv");
                         // both lists are sorted
                         // merge lineups
                         lineups.insert(lineups.end(), distributedLineups.begin(), distributedLineups.end());
                         sort(lineups.begin(), lineups.end());
                         lineups.resize(LINEUPCOUNT);
-                        saveLineupList(p, lineups, "sharedoutput.csv", msTime);
+                        saveLineupList(p, lineups, "\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", msTime);
 
 
                         allLineups.clear();
@@ -2309,8 +2310,8 @@ void distributedLineupSelector()
                 
                 if (!processedDistributedOptimizer)
                 {
-                    lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-                    // faster to parse lineup_list to allLineups
+                    vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+                    // faster to parse vector<Players2> to allLineups
                     allLineups.clear();
                     for (auto& lineup : lineups)
                     {

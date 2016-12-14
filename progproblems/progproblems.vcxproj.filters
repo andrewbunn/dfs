@@ -24,6 +24,9 @@
     <ClCompile Include="parsing.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Players2.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xorshift.h">

@@ -1,8 +1,10 @@
+#pragma once
 #include "parsing.h"
 #include <algorithm>
 #include <array>
 #include <iomanip>
 #include <numeric>
+#include "Players.h"
 
 vector<string> getNextLineAndSplitIntoTokens(istream& str)
 {
@@ -164,7 +166,7 @@ vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string
     return result;
 }
 
-void writeLineupsData(string filename, lineup_list& lineups)
+void writeLineupsData(string filename, vector<Players2>& lineups)
 {
     ofstream myfile;
     myfile.open(filename);
@@ -190,9 +192,9 @@ void writeLineupsData(string filename, lineup_list& lineups)
     myfile.close();
 }
 
-lineup_list parseLineupsData(string filename)
+vector<Players2> parseLineupsData(string filename)
 {
-    lineup_list result;
+    vector<Players2> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
     vector<uint8_t> current;

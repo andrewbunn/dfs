@@ -5,10 +5,10 @@
 #include <fstream>
 #include <sstream>
 #include "Player.h"
-#include "Players.h"
 #include <unordered_map>
 
 using namespace std;
+struct Players2;
 
 vector<string> getNextLineAndSplitIntoTokens(istream& str);
 
@@ -18,8 +18,8 @@ vector<Player> parsePlayers(string filename);
 vector<vector<string>> parseLineupString(const string filename);
 vector<vector<string>> parseLineupSet(const string filename);
 vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices);
-lineup_list parseLineupsData(string filename);
-void writeLineupsData(string filename, lineup_list& lineups);
+vector<Players2> parseLineupsData(string filename);
+void writeLineupsData(string filename, vector<Players2>& lineups);
 void normalizeName(string& name);
 vector<tuple<string, int, int>> parseCosts(string filename);
 unordered_map<string, float> parseProjections(string filename);

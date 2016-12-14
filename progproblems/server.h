@@ -22,6 +22,8 @@ int selectorCore(
     lineup_set& bestset    // request data
 );
 
+vector<Players2> generateLineupN(const vector<Player>& p, vector<string>& disallowedPlayers, Players2 currentPlayers, int budgetUsed, double& msTime);
+
 enum { max_length = 1024 };
 //class session
 //    : public std::enable_shared_from_this<session>
@@ -184,7 +186,7 @@ public:
         if (strncmp(data_, "select", 6))
         {
             // initialize sharedouput == output
-            vector<vector<uint8_t>> allLineups = parseLineups("sharedoutput.csv", playerIndices);
+            vector<vector<uint8_t>> allLineups = parseLineups("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", playerIndices);
             // read lineups file
             // actually process data here then return result
             int lineupsIndexStart;
@@ -241,7 +243,7 @@ public:
             }
             
             double msTime = 0;
-            lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+            vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
             writeLineupsData("sharedlineups.csv", lineups);
             // just echo back to master to indicate file is ready
         }
