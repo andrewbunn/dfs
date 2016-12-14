@@ -183,7 +183,9 @@ public:
 
     void do_send(std::size_t length)
     {
-        if (strncmp(data_, "select", 6))
+        cout << "Got request: " << endl;
+        cout << data_ << endl;
+        if (strncmp(data_, "select", 6) == 0)
         {
             // initialize sharedouput == output
             vector<vector<uint8_t>> allLineups = parseLineups("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", playerIndices);
@@ -224,8 +226,10 @@ public:
             //int resultIndex = distance(allLineups.begin(), it);
 
             sprintf(data_, "%d %f", resultIndex, bestset.ev);
+            cout << "Response: " << endl;
+            cout << data_ << endl;
         }
-        else if (strncmp(data_, "optimize", 8))
+        else if (strncmp(data_, "optimize", 8) == 0)
         {
             int playersRemoveLen;
             array<char, max_length> indicesArr;
@@ -244,7 +248,7 @@ public:
             
             double msTime = 0;
             vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-            writeLineupsData("sharedlineups.csv", lineups);
+            writeLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv", lineups);
             // just echo back to master to indicate file is ready
         }
 
