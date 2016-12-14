@@ -6,6 +6,7 @@
 #include <utility>
 #include "asio.hpp"
 #include "Players.h"
+#include "parsing.h"
 
 #define SIMULATION_VECTOR_LEN (SIMULATION_COUNT * 128)
 using asio::ip::tcp;
@@ -148,12 +149,12 @@ class server
 public:
     server(asio::io_service& io_service, short port,
         const vector<Player>& p,
-        const vector<vector<uint8_t>>& allLineups,
+        const unordered_map<string, uint8_t> playerIndices,
         const int corrIdx,
         const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs)
         : socket_(io_service, udp::endpoint(udp::v4(), port)),
         p(p),
-        allLineups(allLineups),
+        playerIndices(playerIndices),
         corrIdx(corrIdx),
         projs(projs),
         stdevs(stdevs)
@@ -180,42 +181,70 @@ public:
 
     void do_send(std::size_t length)
     {
-        // actually process data here then return result
-        int lineupsIndexStart;
-        int lineupsIndexEnd; // request data
-        int setLen;
-        array<char, max_length> indicesArr;
-        //std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
-
-        sscanf(data_, "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
-        //sscanf(s.c_str(), "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
-        lineup_set bestset;
-
-        char* indices = &indicesArr[0];
-        for (int i = 0; i < setLen; i++)
+        if (strncmp(data_, "select", 6))
         {
-            int index;
-            sscanf(indices, "%d", &index);
-            bestset.set.push_back(allLineups[index]);
-            indices = strchr(indices, ',') + 1;
+            // initialize sharedouput == output
+            vector<vector<uint8_t>> allLineups = parseLineups("sharedoutput.csv", playerIndices);
+            // read lineups file
+            // actually process data here then return result
+            int lineupsIndexStart;
+            int lineupsIndexEnd; // request data
+            int setLen;
+            array<char, max_length> indicesArr;
+            //std::string s((std::istreambuf_iterator<char>(&b)), std::istreambuf_iterator<char>());
+
+            sscanf(data_, "select %d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
+            //sscanf(s.c_str(), "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
+            lineup_set bestset;
+
+            char* indices = &indicesArr[0];
+            for (int i = 0; i < setLen; i++)
+            {
+                int index;
+                sscanf(indices, "%d", &index);
+                bestset.set.push_back(allLineups[index]);
+                indices = strchr(indices, ',') + 1;
+            }
+
+            int resultIndex = selectorCore(
+                p,
+                allLineups,
+                corrIdx,
+                projs,
+                stdevs,
+                lineupsIndexStart,
+                lineupsIndexEnd, // request data
+                bestset    // request data
+            );
+
+            // convert bestset to string (just last set)
+            //auto it = find(allLineups.begin(), allLineups.end(), bestset.set[bestset.set.size() - 1]);
+            //int resultIndex = distance(allLineups.begin(), it);
+
+            sprintf(data_, "%d %f", resultIndex, bestset.ev);
         }
+        else if (strncmp(data_, "optimize", 8))
+        {
+            int playersRemoveLen;
+            array<char, max_length> indicesArr;
 
-        int resultIndex = selectorCore(
-            p,
-            allLineups,
-            corrIdx,
-            projs,
-            stdevs,
-            lineupsIndexStart,
-            lineupsIndexEnd, // request data
-            bestset    // request data
-        );
+            sscanf(data_, "optimize %d: %s", &playersRemoveLen, &indicesArr[0]);
 
-        // convert bestset to string (just last set)
-        //auto it = find(allLineups.begin(), allLineups.end(), bestset.set[bestset.set.size() - 1]);
-        //int resultIndex = distance(allLineups.begin(), it);
-
-        sprintf(data_, "%d %f", resultIndex, bestset.ev);
+            vector<string> playersToRemove;
+            char* indices = &indicesArr[0];
+            for (int i = 0; i < playersRemoveLen; i++)
+            {
+                int index;
+                sscanf(indices, "%d", &index);
+                playersToRemove.push_back(p[index].name);
+                indices = strchr(indices, ',') + 1;
+            }
+            
+            double msTime = 0;
+            lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
+            writeLineupsData("sharedlineups.csv", lineups);
+            // just echo back to master to indicate file is ready
+        }
 
         socket_.async_send_to(
             asio::buffer(data_, length), sender_endpoint_,
@@ -227,7 +256,7 @@ public:
 
 private:
     const vector<Player> p;
-    const vector<vector<uint8_t>> allLineups;
+    const unordered_map<string, uint8_t> playerIndices;
     const int corrIdx;
     const array<float, SIMULATION_VECTOR_LEN> projs;
     const array<float, SIMULATION_VECTOR_LEN> stdevs;

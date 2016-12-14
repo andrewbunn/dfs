@@ -124,7 +124,7 @@ vector<vector<string>> parseLineupSet(const string filename)
 }
 
 // for now just parse player names like output.csv current does, could make format easier to parse
-vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint8_t>& playerIndices)
+vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices)
 {
     vector<vector<uint8_t>> result;
     ifstream       file(filename);
@@ -158,6 +158,59 @@ vector<vector<uint8_t>> parseLineups(string filename, unordered_map<string, uint
                 }
             }
         }
+        tokens = getNextLineAndSplitIntoTokens(file);
+    }
+
+    return result;
+}
+
+void writeLineupsData(string filename, lineup_list& lineups)
+{
+    ofstream myfile;
+    myfile.open(filename);
+    for (auto& lineup : lineups)
+    {
+        myfile << lineup.bitset1;
+        myfile << ",";
+        myfile << lineup.bitset2;
+        myfile << ",";
+        for (auto x : lineup.posCounts)
+        {
+            myfile << (int)x;
+            myfile << ",";
+        }
+        myfile << (int)lineup.totalCount;
+        myfile << ",";
+        myfile << lineup.value;
+        myfile << ",";
+        myfile << lineup.hasFlex ? 1 : 0;
+        myfile << endl;
+    }
+
+    myfile.close();
+}
+
+lineup_list parseLineupsData(string filename)
+{
+    lineup_list result;
+    ifstream       file(filename);
+    vector<string> tokens = getNextLineAndSplitIntoTokens(file);
+    vector<uint8_t> current;
+
+    //bitset1, bitset2, posCounts, totalCount, value, hasFlex
+    while (tokens.size() >= 10)
+    {
+        int idx = 0;
+        Players2 lineup;
+        lineup.bitset1 = stoull(tokens[idx++], 0, 16);
+        lineup.bitset2 = stoull(tokens[idx++], 0, 16);
+        for (int x = 0; x < lineup.posCounts.size(); x++)
+        {
+            lineup.posCounts[x] = stoi(tokens[idx++]);
+        }
+        lineup.totalCount = stoi(tokens[idx++]);
+        lineup.value = stof(tokens[idx++]);
+        lineup.hasFlex = stoi(tokens[idx++]) != 0;
         tokens = getNextLineAndSplitIntoTokens(file);
     }
 
