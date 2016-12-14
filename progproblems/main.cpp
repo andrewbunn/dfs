@@ -2040,6 +2040,7 @@ void greedyLineupSelector(bool distributed)
                 double msTime = 0;
                 lineup_list lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
                 // faster to parse lineup_list to allLineups
+                // for distributed, this either needs to be output to file or written over socket
                 allLineups.clear();
                 for (auto& lineup : lineups)
                 {
