@@ -702,7 +702,7 @@ void removeDominatedPlayers(string filein, string fileout)
             auto it = remove_if(positionPlayers.begin() + j + 1, positionPlayers.end(), [&](Player& a) {
 
                 // PositionCount
-                static float minValue[5] = { 8, 8, 8, 5, 5 };
+                static float minValue[5] = { 8, 7, 7, 5, 5 };
                 return a.proj < minValue[i] ||
                     (count_if(positionPlayers.begin(), positionPlayers.begin() + j + 1, [&](Player& p) {
                     static float epsilon = 1;
@@ -1643,7 +1643,7 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
     for (auto & x : playerCounts)
     {
         float percentOwned = (float)x.second / (float)TARGET_LINEUP_COUNT;
-        if (percentOwned > 0.2 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
+        if (percentOwned > 0.45 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
         {
             return z.first == x.first;
         }) == ownershipLimits.end())
@@ -2097,23 +2097,29 @@ void distributedLineupSelector()
         int lineupsIndexStart = 0;
         int lineupsIndexEnd = allLineups.size();
 
-        array<char, max_length> recv_buf;
+        array<char, max_length> recv_buf = {};
         // just support 2 for now
         // ANBUNN5 is faster so if that's server give it bigger load:
-        int distributedLineupStart = lineupsIndexEnd = (int)((double)allLineups.size() * .5);
+        int distributedLineupStart = lineupsIndexEnd = (int)((double)allLineups.size() * .45);
         int distributedLineupEnd = allLineups.size();
         // convert start, end, bestset to request
         // write async, get result?
         array<char, max_length> bestsetIndices = {};
         char* currI = &bestsetIndices[0];
-        for (int x : bestsetIndex)
+        int setLen = 0;
+        if (bestset.set.size() > 0)
         {
-            sprintf(currI, "%d,", x);
-            currI = strchr(currI, ',') + 1;
+            for (auto& x : bestset.set[bestset.set.size() - 1])
+            {
+                sprintf(currI, "%d,", x);
+                currI = strchr(currI, ',') + 1;
+                setLen++;
+            }
         }
 
         array<char, max_length> request_buf;
-        snprintf(&request_buf[0], request_buf.size(), "select %d %d %d: %s", distributedLineupStart, distributedLineupEnd, bestset.set.size(), &bestsetIndices[0]);
+        // just send last lineup, keep state on server, tell server to "reset"
+        snprintf(&request_buf[0], request_buf.size(), "select %d %d %d: %s", distributedLineupStart, distributedLineupEnd, setLen, &bestsetIndices[0]);
             
         std::future<std::size_t> send_length =
             socket.async_send_to(asio::buffer(request_buf),
@@ -2151,6 +2157,7 @@ void distributedLineupSelector()
             {
                 bestsetIndex[bestsetIndex.size() - 1] = resultIndex;
                 bestset.set[bestset.set.size() - 1] = allLineups[resultIndex];
+                bestset.ev = resultEV;
             }
         }
 
@@ -2222,10 +2229,11 @@ void distributedLineupSelector()
                 }
 
                 // for now, dont bother distributed if we cant split qbs
-                if (qbs.size() > 1)
+                if (qbs.size() > 1
+                    && processedDistributedOptimizer)
                 {
                     cout << "Multiple qbs to distribute" << endl;
-                    int distIndexStart = qbs.size() / 2;
+                    int distIndexStart = (int)(qbs.size() * .45);
                     int distIndexEnd = qbs.size();
                     for (int q = 0; q < qbs.size(); q++)
                     {
@@ -2258,14 +2266,14 @@ void distributedLineupSelector()
                     sendOptimizeLength.get();
 
                     udp::endpoint senderOptimize_endpoint;
-                    future<size_t> recv_length =
+                    future<size_t> recvOptimizelength =
                         socket.async_receive_from(
                             asio::buffer(recv_buf),
                             senderOptimize_endpoint,
                             asio::use_future);
 
                     vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-                    if (recv_length.get() > 0)
+                    if (recvOptimizelength.get() > 0)
                     {
                         cout << "Got response from server." << endl;
                         vector<Players2> distributedLineups = parseLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv");
@@ -2340,6 +2348,7 @@ void distributedLineupSelector()
                         }
                         allLineups.push_back(currentLineup);
                     }
+                    saveLineupList(p, lineups, "\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", msTime);
                 }
             }
         }
