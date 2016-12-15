@@ -199,15 +199,19 @@ public:
 
             sscanf(data_, "select %d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
             //sscanf(s.c_str(), "%d %d %d: %s", &lineupsIndexStart, &lineupsIndexEnd, &setLen, &indicesArr[0]);
-            lineup_set bestset;
 
-            char* indices = &indicesArr[0];
-            for (int i = 0; i < setLen; i++)
+            if (setLen > 0)
             {
-                int index;
-                sscanf(indices, "%d", &index);
-                bestset.set.push_back(allLineups[index]);
-                indices = strchr(indices, ',') + 1;
+                vector<uint8_t> lineup;
+                char* indices = &indicesArr[0];
+                for (int i = 0; i < setLen; i++)
+                {
+                    int index;
+                    sscanf(indices, "%d", &index);
+                    lineup.push_back(index);
+                    indices = strchr(indices, ',') + 1;
+                }
+                bestset.set.push_back(lineup);
             }
 
             int resultIndex = selectorCore(
@@ -226,6 +230,8 @@ public:
             //int resultIndex = distance(allLineups.begin(), it);
 
             sprintf(data_, "%d %f", resultIndex, bestset.ev);
+            // undo last add
+            bestset.set.resize(bestset.set.size() - 1);
             cout << "Response: " << endl;
             cout << data_ << endl;
         }
@@ -250,6 +256,7 @@ public:
             vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
             writeLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv", lineups);
             // just echo back to master to indicate file is ready
+            cout << "Wrote lineups data" << endl;
         }
 
         socket_.async_send_to(
@@ -261,6 +268,7 @@ public:
     }
 
 private:
+    lineup_set bestset;;
     const vector<Player> p;
     const unordered_map<string, uint8_t> playerIndices;
     const int corrIdx;
