@@ -6,6 +6,7 @@ function delayGetData()
 }
 function getData()
 {
+	var pos = "";
 	var table = document.getElementsByClassName("players")[0].getElementsByTagName("tbody")[0];
 	var players = table.getElementsByTagName("tr");
 	for (var i =0; i < players.length; i++)
@@ -13,6 +14,7 @@ function getData()
 		var row = players[i];
 		var cols = row.getElementsByTagName("td");
 		var name = cols[1].getElementsByClassName("ysf-player-name")[0].innerText;
+		pos = name.split("-")[1].trim();
 		name = name.split("-")[0].trim();
 		if (name == "New York NYJ")
 		{
@@ -48,10 +50,16 @@ function getData()
 	
 	var navlist = document.getElementsByClassName("pagingnavlist")[0];
 	var next = navlist.getElementsByClassName("last")[0].getElementsByTagName("a")[0];
-	if (next)
+	if(next)
 	{
 		next.onclick = delayGetData;
 	}
 	
+	var localvalue = localStorage.getItem("projdata" + pos);
+	if (localvalue)
+	{
+		str = localvalue + str;
+	}
+	localStorage.setItem("projdata" + pos, str);
 	window.location.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(str);
 }

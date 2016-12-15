@@ -204,8 +204,8 @@ vector<Players2> parseLineupsData(string filename)
     {
         int idx = 0;
         Players2 lineup;
-        lineup.bitset1 = stoull(tokens[idx++], 0, 16);
-        lineup.bitset2 = stoull(tokens[idx++], 0, 16);
+        lineup.bitset1 = stoull(tokens[idx++]);
+        lineup.bitset2 = stoull(tokens[idx++]);
         for (int x = 0; x < lineup.posCounts.size(); x++)
         {
             lineup.posCounts[x] = stoi(tokens[idx++]);
@@ -213,6 +213,7 @@ vector<Players2> parseLineupsData(string filename)
         lineup.totalCount = stoi(tokens[idx++]);
         lineup.value = stof(tokens[idx++]);
         lineup.hasFlex = stoi(tokens[idx++]) != 0;
+        result.push_back(lineup);
         tokens = getNextLineAndSplitIntoTokens(file);
     }
 
@@ -804,7 +805,7 @@ unordered_map<string, float> parseProsStats()
                         results[tokens[0]] = proj;
                     }
                     //if (tokens[0] != "ty montgomery" && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
-                    else if (tokens[0] != "ty montgomery" && proj > 5)
+                    else if (tokens[0] != "ty montgomery" && proj > 5 && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
                     {
                         throw invalid_argument("Invalid player: " + tokens[0]);
                     }
