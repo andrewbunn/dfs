@@ -1125,6 +1125,15 @@ float runSimulationMaxWin(
 
     vsAdd(len, projs, &playerScoresV[0], &playerScoresV[0]);*/
 
+
+    // qb1 -> wr1, wr2, te, opp def
+    // could have (pairs) (idx1, idx2) -> corr idx1 always qb's
+    // corr40Arr = (qb, wr1), ...
+    // corr30Arr = (qb, wr2), (qb, te1)..
+    // this way we dont need to do the corr/swapping stuff either
+    // better to just be adjacent array entries, pack unpack for vector?
+
+
     for (int index = 0; index < SIMULATION_COUNT; index++)
     {
         //static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
@@ -1643,7 +1652,7 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
     for (auto & x : playerCounts)
     {
         float percentOwned = (float)x.second / (float)TARGET_LINEUP_COUNT;
-        if (percentOwned > 0.45 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
+        if (percentOwned > 0.25 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
         {
             return z.first == x.first;
         }) == ownershipLimits.end())
@@ -1658,58 +1667,6 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
             }
             playersToRemove.push_back(p[x.first].name);
         }
-    }
-    return playersToRemove;
-}
-
-double phi(double x)
-{
-    // constants
-    double a1 = 0.254829592;
-    double a2 = -0.284496736;
-    double a3 = 1.421413741;
-    double a4 = -1.453152027;
-    double a5 = 1.061405429;
-    double p = 0.3275911;
-
-    // Save the sign of x
-    int sign = 1;
-    if (x < 0)
-        sign = -1;
-    x = fabs(x) / sqrt(2.0);
-
-    // A&S formula 7.1.26
-    double t = 1.0 / (1.0 + p*x);
-    double y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*exp(-x*x);
-
-    return 0.5*(1.0 + sign*y);
-}
-
-
-vector<string> determineOverweightPlayers(vector<Player>& p, unordered_map<uint8_t, int>& playerCounts, int numLineups)
-{
-    vector<string> playersToRemove;
-    for (auto & x : playerCounts)
-    {
-        Player& player = p[x.first];
-        // calculate z:
-        const double threshold = 8.0;
-        const double maxRisk = 0.15;
-        double z = (threshold - (double)player.proj) / (double)player.stdDev;
-        double prob = phi(z);
-        double weight = (double)x.second / (double)numLineups;
-        // need to factor in value at some point
-        // factor in position as well?
-        double val = prob * weight;
-        if (val > maxRisk)
-        {
-            playersToRemove.push_back(p[x.first].name);
-            cout << p[x.first].name << ": " << val << ",";
-        }
-    }
-    if (playersToRemove.size() > 0)
-    {
-        cout << endl;
     }
     return playersToRemove;
 }
