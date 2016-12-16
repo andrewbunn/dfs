@@ -1111,26 +1111,35 @@ float runSimulationMaxWin(
     //vector<float> corrCoeffs;
     // use corrPairs indices to create index array:
     // max qb len (32? 10?)
-    thread_local unique_ptr<float[]> zs(new float[len]);
-    memcpy(&zs[0], standardNormals, len);
+    //thread_local unique_ptr<float[]> zs(new float[len]);
+    //memcpy(&zs[0], standardNormals, len * sizeof(float));
 
     for (int index = 0; index < SIMULATION_COUNT; index++)
     {
-        float* playerStandardNormals = &zs[allPlayers.size() * index];
-        for (int i = 1; i < corrPairs.size(); i += 2)
+        const float* playerStandardNormals = &standardNormals[allPlayers.size() * index];
+        /*for (int i = 1; i < corrPairs.size(); i += 2)
         {
             float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
             playerStandardNormals[corrPairs[i]] = playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1;
+        }*/
+    //}
+        array<float, 128> playerScores;
+        vsMul(allPlayers.size(), stdevs, playerStandardNormals, &playerScores[0]);
+
+        for (int i = 1; i < corrPairs.size(); i += 2)
+        {
+            float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
+            playerScores[corrPairs[i]] = stdevs[i] * (playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1);
         }
-    }
 
-    vsMul(len, stdevs, &zs[0], &zs[0]);
-    vsAdd(len, projs, &zs[0], &zs[0]);
+        vsAdd(allPlayers.size(), projs, &playerScores[0], &playerScores[0]);
 
+    //vsMul(len, stdevs, &standardNormals[0], &standardNormals[0]);
+    //vsAdd(len, projs, &standardNormals[0], &standardNormals[0]);
 
-    for (int index = 0; index < SIMULATION_COUNT; index++)
-    {
-        float* scores = &zs[allPlayers.size() * index];
+    //for (int index = 0; index < SIMULATION_COUNT; index++)
+    //{
+        //float* scores = &standardNormals[allPlayers.size() * index];
         int winnings = 0;
         for (auto& lineup : lineups)
         {
@@ -1138,7 +1147,7 @@ float runSimulationMaxWin(
             for (auto player : lineup)
             {
                 //lineupScore += playerScoresV[index * 64 + player];
-                lineupScore += scores[player];
+                lineupScore += playerScores[player];
             }
             // only count > threshold
             if (lineupScore >= 170)
@@ -1180,34 +1189,37 @@ float runSimulationMaxWin(
 
     //for (int index = 0; index < SIMULATION_COUNT; index++)
     //{
-    //    
-    //    //static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-    //    //static thread_local random_device rdev;
-    //    //static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
-    //    
-    //    const float* playerStandardNormals = &standardNormals[allPlayers.size() * index];
+    //    unique_ptr<float[]> playerStandardNormals(new float[allPlayers.size()]);
+    //    memcpy(&playerStandardNormals[0], &standardNormals[allPlayers.size() * index], allPlayers.size() * sizeof(float));
+    //    //const float* playerStandardNormals = &zs[allPlayers.size() * index];
     //    //alignas(256) array<float, 64> playerStandardNormals;
     //    //normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
     //    array<float, 128> playerScores;
-    //    int i;
-    //    for (i = 0; i < corrIdx; i++)
+    //    int i = 0;
+    //    //for (i = 0; i < corrIdx; i++)
+    //    //{
+    //    //    const Player& p = allPlayers[i];
+    //    //    // .4z1 + 0.91651513899 * z2 = correlated standard normal
+    //    //    if (i % 2 == 0)
+    //    //    {
+    //    //        playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+    //    //    }
+    //    //    else
+    //    //    {
+    //    //        // p.proj + sd * .4 * other normal + sd * .9 * normal
+    //    //        float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
+    //    //        playerScores[i] = p.proj + (p.stdDev * corrZ);
+    //    //        //if (playerScores[i] != playerScoresV[index * 64 + i])
+    //    //        //{
+    //    //            //cout << playerScores[i] << "," << playerScoresV[index * 64 + i] << endl;
+    //    //        //}
+    //    //    }
+    //    //}
+
+    //    for (int i = 1; i < corrPairs.size(); i += 2)
     //    {
-    //        const Player& p = allPlayers[i];
-    //        // .4z1 + 0.91651513899 * z2 = correlated standard normal
-    //        if (i % 2 == 0)
-    //        {
-    //            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
-    //        }
-    //        else
-    //        {
-    //            // p.proj + sd * .4 * other normal + sd * .9 * normal
-    //            float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
-    //            playerScores[i] = p.proj + (p.stdDev * corrZ);
-    //            //if (playerScores[i] != playerScoresV[index * 64 + i])
-    //            //{
-    //                //cout << playerScores[i] << "," << playerScoresV[index * 64 + i] << endl;
-    //            //}
-    //        }
+    //        float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
+    //        playerScores[corrPairs[i]] = playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1;
     //    }
 
     //    // assumes corrIdx < size
@@ -1220,6 +1232,10 @@ float runSimulationMaxWin(
 
     //        // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
     //        playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+    //        if (abs(playerScores[i] - zs[allPlayers.size() * index + i]) > 0.01)
+    //        {
+    //            cout << p.name << playerScores[i] << zs[allPlayers.size() * index + i] << endl;
+    //        }
     //    }
     //    
 
@@ -1722,7 +1738,7 @@ int selectorCore(
     const vector<vector<uint8_t>>& allLineups,
     const vector<uint8_t>& corrPairs,
     const vector<float>& corrCoeffs,
-    const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs,
+    const array<float, 128>& projs, const array<float, 128>& stdevs,
     int lineupsIndexStart, int lineupsIndexEnd, // request data
     lineup_set& bestset    // request data
     )
@@ -1804,8 +1820,8 @@ void greedyLineupSelector()
             float zr = sqrt(1 - r*r);
             corrPairs.push_back(it->index);
             corrPairs.push_back(itC->index);
-            corrCoeffs.push_back(zr);
             corrCoeffs.push_back(r);
+            corrCoeffs.push_back(zr);
         }
     }
 
@@ -1813,14 +1829,23 @@ void greedyLineupSelector()
     unordered_map<uint8_t, int> playerCounts;
 
     // vectorized projection and stddev data
-    static array<float, SIMULATION_VECTOR_LEN> projs;
-    static array<float, SIMULATION_VECTOR_LEN> stdevs;
+    static array<float, 128> projs;
+    static array<float, 128> stdevs;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
         projs[x.index] = (x.proj);
         stdevs[x.index] = (x.stdDev);
     }
+
+   /* for (int i = 1; i < SIMULATION_COUNT; i++)
+    {
+        for (int j = 0; j < p.size(); j++)
+        {
+            projs[i * p.size() + j] = projs[j];
+            stdevs[i * p.size() + j] = stdevs[j];
+        }
+    }*/
     vector<pair<uint8_t, float>> ownershipLimits;
     for (auto& x : ownership)
     {
@@ -1999,7 +2024,6 @@ void distributedLineupSelector()
 
     vector<uint8_t> corrPairs;
     vector<float> corrCoeffs;
-    //int corrIdx = 0;
     for (auto & s : corr)
     {
         // move those entries to the start of the array
@@ -2018,8 +2042,8 @@ void distributedLineupSelector()
             float zr = sqrt(1 - r*r);
             corrPairs.push_back(it->index);
             corrPairs.push_back(itC->index);
-            corrCoeffs.push_back(zr);
             corrCoeffs.push_back(r);
+            corrCoeffs.push_back(zr);
         }
     }
 
@@ -2027,8 +2051,8 @@ void distributedLineupSelector()
     unordered_map<uint8_t, int> playerCounts;
 
     // vectorized projection and stddev data
-    static array<float, SIMULATION_VECTOR_LEN> projs;
-    static array<float, SIMULATION_VECTOR_LEN> stdevs;
+    static array<float, 128> projs;
+    static array<float, 128> stdevs;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
@@ -2673,7 +2697,6 @@ void distributedSelectWorker()
 
     vector<uint8_t> corrPairs;
     vector<float> corrCoeffs;
-    //int corrIdx = 0;
     for (auto & s : corr)
     {
         // move those entries to the start of the array
@@ -2692,16 +2715,16 @@ void distributedSelectWorker()
             float zr = sqrt(1 - r*r);
             corrPairs.push_back(it->index);
             corrPairs.push_back(itC->index);
-            corrCoeffs.push_back(zr);
             corrCoeffs.push_back(r);
+            corrCoeffs.push_back(zr);
         }
     }
 
     unordered_map<string, uint8_t> playerIndices;
 
     // vectorized projection and stddev data
-    static array<float, SIMULATION_VECTOR_LEN> projs;
-    static array<float, SIMULATION_VECTOR_LEN> stdevs;
+    static array<float, 128> projs;
+    static array<float, 128> stdevs;
     for (auto& x : p)
     {
         playerIndices.emplace(x.name, x.index);
