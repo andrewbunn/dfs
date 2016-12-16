@@ -1082,7 +1082,8 @@ float runSimulationMaxWin(
     const vector<Player>& allPlayers,
     const float* projs, const float*  stdevs,
     //const float* corrCoefs, const array<float, SIMULATION_COUNT * 64>& corrOnes, const float* corrForty,
-    const int corrIdx)
+    const vector<uint8_t>& corrPairs,
+    const vector<float>& corrCoeffs)
 {
     int winningThresholdsHit = 0;
     /*
@@ -1105,6 +1106,49 @@ float runSimulationMaxWin(
     //const array<float, len> corrCoefs; // 0, .916, 0, .916 ...
     //const array<float, len> corrOnes;
     //const array<float, len> corrForty; // init to .4
+
+    //vector<uint8_t> corrPairs;
+    //vector<float> corrCoeffs;
+    // use corrPairs indices to create index array:
+    // max qb len (32? 10?)
+    thread_local unique_ptr<float[]> zs(new float[len]);
+    memcpy(&zs[0], standardNormals, len);
+
+    for (int index = 0; index < SIMULATION_COUNT; index++)
+    {
+        float* playerStandardNormals = &zs[allPlayers.size() * index];
+        for (int i = 1; i < corrPairs.size(); i += 2)
+        {
+            float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
+            playerStandardNormals[corrPairs[i]] = playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1;
+        }
+    }
+
+    vsMul(len, stdevs, &zs[0], &zs[0]);
+    vsAdd(len, projs, &zs[0], &zs[0]);
+
+
+    for (int index = 0; index < SIMULATION_COUNT; index++)
+    {
+        float* scores = &zs[allPlayers.size() * index];
+        int winnings = 0;
+        for (auto& lineup : lineups)
+        {
+            float lineupScore = 0.f;
+            for (auto player : lineup)
+            {
+                //lineupScore += playerScoresV[index * 64 + player];
+                lineupScore += scores[player];
+            }
+            // only count > threshold
+            if (lineupScore >= 170)
+            {
+                winnings = 1;
+            }
+        }
+        winningThresholdsHit += winnings;
+    }
+
     /*
     thread_local array<float, len> playerScoresV;
     vsMul(len, stdevs, standardNormals, &playerScoresV[0]);
@@ -1125,73 +1169,83 @@ float runSimulationMaxWin(
 
     vsAdd(len, projs, &playerScoresV[0], &playerScoresV[0]);*/
 
-    for (int index = 0; index < SIMULATION_COUNT; index++)
-    {
-        //static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
-        //static thread_local random_device rdev;
-        //static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
-        
-        const float* playerStandardNormals = &standardNormals[allPlayers.size() * index];
-        //alignas(256) array<float, 64> playerStandardNormals;
-        //normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
-        array<float, 128> playerScores;
-        int i;
-        for (i = 0; i < corrIdx; i++)
-        {
-            const Player& p = allPlayers[i];
-            // .4z1 + 0.91651513899 * z2 = correlated standard normal
-            if (i % 2 == 0)
-            {
-                playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
-            }
-            else
-            {
-                // p.proj + sd * .4 * other normal + sd * .9 * normal
-                float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
-                playerScores[i] = p.proj + (p.stdDev * corrZ);
-                //if (playerScores[i] != playerScoresV[index * 64 + i])
-                //{
-                    //cout << playerScores[i] << "," << playerScoresV[index * 64 + i] << endl;
-                //}
-            }
-        }
 
-        // assumes corrIdx < size
-        //int len = allPlayers.size() - corrIdx;
-        //vsMul(len, stdevs + corrIdx, playerStandardNormals + corrIdx, &playerScores[corrIdx]);
-        //vsAdd(len, projs + corrIdx, &playerScores[corrIdx], &playerScores[corrIdx]);
-        for (; i < allPlayers.size(); i++)
-        {
-            const Player& p = allPlayers[i];
+    // qb1 -> wr1, wr2, te, opp def
+    // could have (pairs) (idx1, idx2) -> corr idx1 always qb's
+    // corr40Arr = (qb, wr1), ...
+    // corr30Arr = (qb, wr2), (qb, te1)..
+    // this way we dont need to do the corr/swapping stuff either
+    // better to just be adjacent array entries, pack unpack for vector?
 
-            // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
-            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
-        }
-        
 
-        // keep track of times we win high placing since that excludes additional same placements
-        // the problem with this is that generally we enter multiple contests, need to factor that in
+    //for (int index = 0; index < SIMULATION_COUNT; index++)
+    //{
+    //    
+    //    //static thread_local unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    //    //static thread_local random_device rdev;
+    //    //static thread_local LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(), rdev(), rdev(), rdev());
+    //    
+    //    const float* playerStandardNormals = &standardNormals[allPlayers.size() * index];
+    //    //alignas(256) array<float, 64> playerStandardNormals;
+    //    //normaldistf_boxmuller_avx(&playerStandardNormals[0], 64, lcg);
+    //    array<float, 128> playerScores;
+    //    int i;
+    //    for (i = 0; i < corrIdx; i++)
+    //    {
+    //        const Player& p = allPlayers[i];
+    //        // .4z1 + 0.91651513899 * z2 = correlated standard normal
+    //        if (i % 2 == 0)
+    //        {
+    //            playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+    //        }
+    //        else
+    //        {
+    //            // p.proj + sd * .4 * other normal + sd * .9 * normal
+    //            float corrZ = .4 * playerStandardNormals[i - 1] + 0.91651513899 * playerStandardNormals[i];
+    //            playerScores[i] = p.proj + (p.stdDev * corrZ);
+    //            //if (playerScores[i] != playerScoresV[index * 64 + i])
+    //            //{
+    //                //cout << playerScores[i] << "," << playerScoresV[index * 64 + i] << endl;
+    //            //}
+    //        }
+    //    }
 
-        // create map of player -> generated score
-        // for each lineup -> calculate score
-        int winnings = 0;
-        for (auto& lineup : lineups)
-        {
-            float lineupScore = 0.f;
-            for (auto player : lineup)
-            {
-                //lineupScore += playerScoresV[index * 64 + player];
-                lineupScore += playerScores[player];
-            }
-            // only count > threshold
-            if (lineupScore >= 170)
-            {
-                winnings = 1;
-            }
-        }
+    //    // assumes corrIdx < size
+    //    //int len = allPlayers.size() - corrIdx;
+    //    //vsMul(len, stdevs + corrIdx, playerStandardNormals + corrIdx, &playerScores[corrIdx]);
+    //    //vsAdd(len, projs + corrIdx, &playerScores[corrIdx], &playerScores[corrIdx]);
+    //    for (; i < allPlayers.size(); i++)
+    //    {
+    //        const Player& p = allPlayers[i];
 
-        winningThresholdsHit += winnings;
-    }
+    //        // playerscore should not go below 0? will that up winrate too high? probably favors cheap players
+    //        playerScores[i] = p.proj + (p.stdDev * playerStandardNormals[i]);
+    //    }
+    //    
+
+    //    // keep track of times we win high placing since that excludes additional same placements
+    //    // the problem with this is that generally we enter multiple contests, need to factor that in
+
+    //    // create map of player -> generated score
+    //    // for each lineup -> calculate score
+    //    int winnings = 0;
+    //    for (auto& lineup : lineups)
+    //    {
+    //        float lineupScore = 0.f;
+    //        for (auto player : lineup)
+    //        {
+    //            //lineupScore += playerScoresV[index * 64 + player];
+    //            lineupScore += playerScores[player];
+    //        }
+    //        // only count > threshold
+    //        if (lineupScore >= 170)
+    //        {
+    //            winnings = 1;
+    //        }
+    //    }
+
+    //    winningThresholdsHit += winnings;
+    //}
 
     // we can calculate std dev per lineup and calculate risk of whole set
     //winningsTotal = accumulate(simulationResults.begin(), simulationResults.end(), 0.f);
@@ -1643,7 +1697,7 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
     for (auto & x : playerCounts)
     {
         float percentOwned = (float)x.second / (float)TARGET_LINEUP_COUNT;
-        if (percentOwned > 0.45 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
+        if (percentOwned > 0.25 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
         {
             return z.first == x.first;
         }) == ownershipLimits.end())
@@ -1662,63 +1716,12 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
     return playersToRemove;
 }
 
-double phi(double x)
-{
-    // constants
-    double a1 = 0.254829592;
-    double a2 = -0.284496736;
-    double a3 = 1.421413741;
-    double a4 = -1.453152027;
-    double a5 = 1.061405429;
-    double p = 0.3275911;
-
-    // Save the sign of x
-    int sign = 1;
-    if (x < 0)
-        sign = -1;
-    x = fabs(x) / sqrt(2.0);
-
-    // A&S formula 7.1.26
-    double t = 1.0 / (1.0 + p*x);
-    double y = 1.0 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1)*t*exp(-x*x);
-
-    return 0.5*(1.0 + sign*y);
-}
-
-
-vector<string> determineOverweightPlayers(vector<Player>& p, unordered_map<uint8_t, int>& playerCounts, int numLineups)
-{
-    vector<string> playersToRemove;
-    for (auto & x : playerCounts)
-    {
-        Player& player = p[x.first];
-        // calculate z:
-        const double threshold = 8.0;
-        const double maxRisk = 0.15;
-        double z = (threshold - (double)player.proj) / (double)player.stdDev;
-        double prob = phi(z);
-        double weight = (double)x.second / (double)numLineups;
-        // need to factor in value at some point
-        // factor in position as well?
-        double val = prob * weight;
-        if (val > maxRisk)
-        {
-            playersToRemove.push_back(p[x.first].name);
-            cout << p[x.first].name << ": " << val << ",";
-        }
-    }
-    if (playersToRemove.size() > 0)
-    {
-        cout << endl;
-    }
-    return playersToRemove;
-}
-
 constexpr int lineupChunkSize = 64;
 int selectorCore(
     const vector<Player>& p,
     const vector<vector<uint8_t>>& allLineups,
-    int corrIdx,
+    const vector<uint8_t>& corrPairs,
+    const vector<float>& corrCoeffs,
     const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs,
     int lineupsIndexStart, int lineupsIndexEnd, // request data
     lineup_set& bestset    // request data
@@ -1733,7 +1736,7 @@ int selectorCore(
 
     vector<lineup_set> chunkResults(lineupChunkStarts.size());
     parallel_transform(lineupChunkStarts.begin(), lineupChunkStarts.end(), chunkResults.begin(),
-        [&allLineups, &p, &bestset, &projs, &stdevs, corrIdx](int lineupChunkStart)
+        [&allLineups, &p, &bestset, &projs, &stdevs, &corrPairs, &corrCoeffs](int lineupChunkStart)
     {
         static thread_local unique_ptr<float[]> standardNormals(new float[(size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)min((size_t)lineupChunkSize, allLineups.size())]);
         unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
@@ -1750,7 +1753,7 @@ int selectorCore(
 
         vector<lineup_set> results(currentLineupCount);
         transform(allLineups.begin() + indexBegin, allLineups.begin() + indexEnd, results.begin(),
-            [&allLineups, &p, &bestset, &projs, &stdevs, corrIdx, indexBegin] (const vector<uint8_t>& lineup)
+            [&allLineups, &p, &bestset, &projs, &stdevs, &corrPairs, &corrCoeffs, indexBegin] (const vector<uint8_t>& lineup)
         {
             size_t index = &lineup - &allLineups[indexBegin];
             const int chunk = p.size() * SIMULATION_COUNT;
@@ -1759,7 +1762,7 @@ int selectorCore(
             currentSet.ev = runSimulationMaxWin(
                 &standardNormals[chunk * index],
                 currentSet.set, p, &projs[0], &stdevs[0],
-                corrIdx);
+                corrPairs, corrCoeffs);
             return currentSet;
         });
         // comparator is backwards currently, can fix
@@ -1776,29 +1779,33 @@ int selectorCore(
 void greedyLineupSelector()
 {
     vector<Player> p = parsePlayers("players.csv");
-    vector<pair<string, string>> corr = parseCorr("corr.csv");
+    vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
     vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
 
-    int corrIdx = 0;
+    vector<uint8_t> corrPairs;
+    vector<float> corrCoeffs;
+    //int corrIdx = 0;
     for (auto & s : corr)
     {
         // move those entries to the start of the array
         // only when we have the pair
         auto it = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.first;
+            return p.name == get<0>(s);
         });
         auto itC = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.second;
+            return p.name == get<1>(s);
         });
         if (it != p.end() && itC != p.end())
         {
-            swap(p[corrIdx].index, it->index);
-            iter_swap(it, p.begin() + corrIdx++);
-            swap(p[corrIdx].index, itC->index);
-            iter_swap(itC, p.begin() + corrIdx++);
+            float r = get<2>(s);
+            float zr = sqrt(1 - r*r);
+            corrPairs.push_back(it->index);
+            corrPairs.push_back(itC->index);
+            corrCoeffs.push_back(zr);
+            corrCoeffs.push_back(r);
         }
     }
 
@@ -1848,7 +1855,8 @@ void greedyLineupSelector()
         bestsetIndex.push_back(selectorCore(
             p,
             allLineups,
-            corrIdx,
+            corrPairs,
+            corrCoeffs,
             projs, stdevs,
             lineupsIndexStart, lineupsIndexEnd, // request data
             bestset    // request data
@@ -1985,29 +1993,33 @@ void distributedLineupSelector()
                 asio::use_future);
 
     vector<Player> p = parsePlayers("players.csv");
-    vector<pair<string, string>> corr = parseCorr("corr.csv");
+    vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
     vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
 
-    int corrIdx = 0;
+    vector<uint8_t> corrPairs;
+    vector<float> corrCoeffs;
+    //int corrIdx = 0;
     for (auto & s : corr)
     {
         // move those entries to the start of the array
         // only when we have the pair
         auto it = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.first;
+            return p.name == get<0>(s);
         });
         auto itC = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.second;
+            return p.name == get<1>(s);
         });
         if (it != p.end() && itC != p.end())
         {
-            swap(p[corrIdx].index, it->index);
-            iter_swap(it, p.begin() + corrIdx++);
-            swap(p[corrIdx].index, itC->index);
-            iter_swap(itC, p.begin() + corrIdx++);
+            float r = get<2>(s);
+            float zr = sqrt(1 - r*r);
+            corrPairs.push_back(it->index);
+            corrPairs.push_back(itC->index);
+            corrCoeffs.push_back(zr);
+            corrCoeffs.push_back(r);
         }
     }
 
@@ -2139,7 +2151,8 @@ void distributedLineupSelector()
         bestsetIndex.push_back(selectorCore(
             p,
             allLineups,
-            corrIdx,
+            corrPairs,
+            corrCoeffs,
             projs, stdevs,
             lineupsIndexStart, lineupsIndexEnd, // request data
             bestset    // request data
@@ -2654,29 +2667,33 @@ void evaluateScore(string filename)
 void distributedSelectWorker()
 {
     vector<Player> p = parsePlayers("players.csv");
-    vector<pair<string, string>> corr = parseCorr("corr.csv");
+    vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
     vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
 
-    int corrIdx = 0;
+    vector<uint8_t> corrPairs;
+    vector<float> corrCoeffs;
+    //int corrIdx = 0;
     for (auto & s : corr)
     {
         // move those entries to the start of the array
         // only when we have the pair
         auto it = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.first;
+            return p.name == get<0>(s);
         });
         auto itC = find_if(p.begin(), p.end(), [&s](Player& p)
         {
-            return p.name == s.second;
+            return p.name == get<1>(s);
         });
         if (it != p.end() && itC != p.end())
         {
-            swap(p[corrIdx].index, it->index);
-            iter_swap(it, p.begin() + corrIdx++);
-            swap(p[corrIdx].index, itC->index);
-            iter_swap(itC, p.begin() + corrIdx++);
+            float r = get<2>(s);
+            float zr = sqrt(1 - r*r);
+            corrPairs.push_back(it->index);
+            corrPairs.push_back(itC->index);
+            corrCoeffs.push_back(zr);
+            corrCoeffs.push_back(r);
         }
     }
 
@@ -2700,7 +2717,8 @@ void distributedSelectWorker()
     static server s(io_service, 9000,
         p,
         playerIndices,
-        corrIdx,
+        corrPairs,
+        corrCoeffs,
         projs,
         stdevs
         );
