@@ -37,15 +37,15 @@ vector<string> parseNames(string filename)
     return result;
 }
 
-vector<pair<string, string>> parseCorr(string filename)
+vector<tuple<string, string, float>> parseCorr(string filename)
 {
-    vector<pair<string, string>> result;
+    vector<tuple<string, string, float>> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
     int count = 0;
-    while (tokens.size() == 2)
+    while (tokens.size() == 3)
     {
-        result.emplace_back(tokens[0], tokens[1]);
+        result.emplace_back(tokens[0], tokens[1], stof(tokens[2]));
         tokens = getNextLineAndSplitIntoTokens(file);
     }
 

@@ -13,7 +13,7 @@ struct Players2;
 vector<string> getNextLineAndSplitIntoTokens(istream& str);
 
 vector<string> parseNames(string filename);
-vector<pair<string, string>> parseCorr(string filename);
+vector<tuple<string, string, float>> parseCorr(string filename);
 vector<Player> parsePlayers(string filename);
 vector<vector<string>> parseLineupString(const string filename);
 vector<vector<string>> parseLineupSet(const string filename);
