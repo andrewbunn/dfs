@@ -1510,7 +1510,7 @@ void splitLineups(const string lineups)
     int i = 0;
     partition_copy(allLineups.begin(), allLineups.end(), back_inserter(setA), back_inserter(setB), [&i](vector<string>& l)
     {
-        bool setA = i++ < 13;
+        bool setA = i++ < 10;
         return setA;
     });
     sort(setA.begin(), setA.end(), [&originalOrder](vector<string>& la, vector<string>& lb)
