@@ -18,7 +18,7 @@ int selectorCore(
     const vector<vector<uint8_t>>& allLineups,
     const vector<uint8_t>& corrPairs,
     const vector<float>& corrCoeffs,
-    const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs,
+    const array<float, 128>& projs, const array<float, 128>& stdevs,
     int lineupsIndexStart, int lineupsIndexEnd, // request data
     lineup_set& bestset    // request data
 );
@@ -36,7 +36,7 @@ public:
         const unordered_map<string, uint8_t> playerIndices,
         const vector<uint8_t>& corrPairs,
         const vector<float>& corrCoeffs,
-        const array<float, SIMULATION_VECTOR_LEN>& projs, const array<float, SIMULATION_VECTOR_LEN>& stdevs)
+        const array<float, 128>& projs, const array<float, 128>& stdevs)
         : socket_(io_service, udp::endpoint(udp::v4(), port)),
         p(p),
         playerIndices(playerIndices),
@@ -158,8 +158,8 @@ private:
     const unordered_map<string, uint8_t> playerIndices;
     const vector<uint8_t> corrPairs;
     const vector<float> corrCoeffs;
-    const array<float, SIMULATION_VECTOR_LEN> projs;
-    const array<float, SIMULATION_VECTOR_LEN> stdevs;
+    const array<float, 128> projs;
+    const array<float, 128> stdevs;
     udp::socket socket_;
     udp::endpoint sender_endpoint_;
     enum { max_length = 1024 };
