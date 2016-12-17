@@ -2277,7 +2277,7 @@ void distributedLineupSelector()
 
                 // for now, dont bother distributed if we cant split qbs
                 if (qbs.size() > 1
-                    && processedDistributedOptimizer)
+                    )//&& processedDistributedOptimizer)
                 {
                     cout << "Multiple qbs to distribute" << endl;
                     int distIndexStart = (int)(qbs.size() * .45);
@@ -2323,7 +2323,7 @@ void distributedLineupSelector()
                     if (recvOptimizelength.get() > 0)
                     {
                         cout << "Got response from server." << endl;
-                        vector<Players2> distributedLineups = parseLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv");
+                        vector<Players2> distributedLineups = parseLineupsData("\\\\ANBUNN5\\Users\\andrewbunn\\dfs\\progproblems\\sharedlineups.csv");
                         // both lists are sorted
                         // merge lineups
                         lineups.insert(lineups.end(), distributedLineups.begin(), distributedLineups.end());

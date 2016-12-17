@@ -139,7 +139,7 @@ public:
             
             double msTime = 0;
             vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-            writeLineupsData("\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedlineups.csv", lineups);
+            writeLineupsData("\\\\ANBUNN5\\Users\\andrewbunn\\dfs\\progproblems\\sharedlineups.csv", lineups);
             // just echo back to master to indicate file is ready
             cout << "Wrote lineups data" << endl;
         }
