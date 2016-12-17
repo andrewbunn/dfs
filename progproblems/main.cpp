@@ -2693,8 +2693,6 @@ void distributedSelectWorker()
     vector<Player> p = parsePlayers("players.csv");
     vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
-    vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
-
     vector<uint8_t> corrPairs;
     vector<float> corrCoeffs;
     for (auto & s : corr)
