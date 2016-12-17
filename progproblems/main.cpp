@@ -1849,7 +1849,12 @@ void greedyLineupSelector()
     vector<pair<uint8_t, float>> ownershipLimits;
     for (auto& x : ownership)
     {
-        ownershipLimits.emplace_back(playerIndices.find(x.first)->second, x.second);
+        auto it = playerIndices.find(x.first);
+        if (it != playerIndices.end())
+        {
+
+            ownershipLimits.emplace_back(it->second, x.second);
+        }
     }
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
@@ -2062,7 +2067,12 @@ void distributedLineupSelector()
     vector<pair<uint8_t, float>> ownershipLimits;
     for (auto& x : ownership)
     {
-        ownershipLimits.emplace_back(playerIndices.find(x.first)->second, x.second);
+        auto it = playerIndices.find(x.first);
+        if (it != playerIndices.end())
+        {
+
+            ownershipLimits.emplace_back(it->second, x.second);
+        }
     }
 
     unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
