@@ -1580,7 +1580,7 @@ void splitLineups(const string lineups)
     int i = 0;
     partition_copy(allLineups.begin(), allLineups.end(), back_inserter(setA), back_inserter(setB), [&i](vector<string>& l)
     {
-        bool setA = i++ < 10;
+        bool setA = i++ < 20;
         return setA;
     });
     sort(setA.begin(), setA.end(), [&originalOrder](vector<string>& la, vector<string>& lb)
@@ -2236,7 +2236,7 @@ void distributedLineupSelector()
             }
         }
 
-        if (i > 1)
+        if (i > 0)
         {
             uint64_t disallowedSet1 = 0;
             uint64_t disallowedSet2 = 0;
@@ -2280,12 +2280,13 @@ void distributedLineupSelector()
                     )//&& processedDistributedOptimizer)
                 {
                     cout << "Multiple qbs to distribute" << endl;
-                    int distIndexStart = (int)(qbs.size() * .45);
-                    int distIndexEnd = qbs.size();
+                    //int distIndexStart = (int)(qbs.size() * .5);
+                    //int distIndexEnd = qbs.size();
                     for (int q = 0; q < qbs.size(); q++)
                     {
-                        // distributed removes first half of array, we remove second half
-                        if (q < distIndexStart)
+                        // alternate removing qbs since top end qbs process faster
+                        // if we want to change distribution from 50/50, may need probability
+                        if (q % 2 == 1 && q > 1)
                         {
                             playersToRemoveDistributed.push_back(qbs[q]);
                         }

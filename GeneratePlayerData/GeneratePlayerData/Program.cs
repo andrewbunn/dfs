@@ -219,7 +219,7 @@ namespace GeneratePlayerData
                             (!string.IsNullOrEmpty(n.Position) ? 
                             n.PositionEnum == player.PositionEnum : true)).FirstOrDefault();
 
-                        var exclude = !includeThursdayPlayers && player.GameStartTime.DayOfWeek == DayOfWeek.Thursday;
+                        var exclude = !includeThursdayPlayers && (player.GameStartTime.DayOfWeek == DayOfWeek.Thursday || player.GameStartTime.DayOfWeek == DayOfWeek.Saturday);
                         var gameFinished = player.GameStartTime < DateTime.Now;
                         if (matchingPlayer != null && !exclude && !gameFinished)
                         {
@@ -287,7 +287,18 @@ namespace GeneratePlayerData
             foreach(var d in dsts)
             {
                 if (name.Contains(d.ToLower()))
+                {
+                    if (d.ToLower() == "washington")
+                    {
+                        if (name[0] == 'd')
+                        {
+                            // dwayne deandre washington
+                            break;
+                        }
+                    }
                     name = d.ToLower();
+                    break;
+                }
             }
 
             return name;
