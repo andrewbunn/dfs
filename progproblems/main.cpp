@@ -611,35 +611,159 @@ float mixPlayerProjections(Player& p, float numberfire, float fpros, float yahoo
     {
         // for QB: probably use close to even average of yahoo, cbs, stats, numberfire
         // could ignore espn when dling data?
-        return fpros * .77 + yahoo * .13 + numberfire * .1;
+        return fpros;
     }
     else if (p.pos == 4)
     {
-        return fpros * .4 + yahoo * .2 + numberfire * .4;
+        return fpros;
+        //return fpros * 2 - numberfire;
     }
     else
     {
         // for now just 70% yahoo, 30% fpros (fpros includes numberfire)
-        return yahoo * .5 + fpros * .5;
+        //return yahoo * .3 + fpros * 1 + numberfire * -.3;
+        return fpros * 2 - numberfire;
     }
+}
+
+void removeDominatedPlayersProjFile()
+{
+    unordered_map<string, float> stds;
+
+    for (int i = 0; i <= 4; i++)
+    {
+        ostringstream stream;
+        stream << "std" << i;
+        stream << ".csv";
+        unordered_map<string, float> std = parseProjections(stream.str());
+        for (auto &x : std)
+        {
+            stds.emplace(x.first, x.second);
+        }
+    }
+    vector<tuple<string, int, int>> costs = parseCosts("costs.csv");
+    //unordered_map<string, float> numfire = parseProjections("projs.csv");
+
+    unordered_map<string, float> fpros = parseProsStats();
+
+    vector<tuple<string, int, float, int, float>> playersResult;
+    vector<float> sdevs;
+    for (auto& p : fpros)
+    {
+        if (p.first == "cleveland")
+        {
+            continue;
+        }
+        //auto itnf = numfire.find(p.first);
+        //if (itnf != numfire.end())
+        {
+            auto it = find_if(costs.begin(), costs.end(), [&](tuple<string, int, int> &x)
+            {
+                return get<0>(x) == p.first;
+            });
+            if (it != costs.end())
+            {
+                int pos = get<1>(*it);
+                float proj = p.second;
+                
+                //if (/*pos != 4 &&*/ itnf != numfire.end())
+                {
+                    //proj = p.second * 2 - itnf->second;
+                    //proj = (p.second * 2.f + itnf->second)/3.f;
+                }
+                //else
+                {
+
+                }
+                float sdev = 0.f;
+                auto itnfstd = stds.find(p.first);
+                if (itnfstd != stds.end())
+                {
+                    sdev = itnfstd->second;
+                }
+                playersResult.emplace_back(p.first, pos, proj, get<2>(*it), sdev);
+                //sdevs.push_back(sdev);
+            }
+        }
+    }
+
+    ofstream myfile;
+    myfile.open("players.csv");
+    // for a slot, if there is a player cheaper cost but > epsilon score, ignore
+    // no def for now?
+    for (int i = 0; i <= 4; i++)
+    {
+        vector<tuple<string, int, float, int, float>> positionPlayers;
+        copy_if(playersResult.begin(), playersResult.end(), back_inserter(positionPlayers), [i](tuple<string, int, float, int, float>& p) {
+            return (get<3>(p) == i);
+        });
+
+        // sort by value, descending
+        sort(positionPlayers.begin(), positionPlayers.end(), [](tuple<string, int, float, int, float>& a, tuple<string, int, float, int, float>& b) { return get<2>(a) > get<2>(b); });
+
+
+        // biggest issue is for rb/wr we dont account for how many we can use.
+        for (int j = 0; j < positionPlayers.size(); j++)
+        {
+            // remove all players with cost > player
+            //auto& p = positionPlayers[j];
+            auto it = remove_if(positionPlayers.begin() + j + 1, positionPlayers.end(), [&](tuple<string, int, float, int, float>& a) {
+
+                // PositionCount
+                static float minValue[5] = { 8, 8, 8, 5, 5 };
+                return get<2>(a) < minValue[i] ||
+                    (count_if(positionPlayers.begin(), positionPlayers.begin() + j + 1, [&](tuple<string, int, float, int, float>& p) {
+                    static float epsilon = 1;
+
+                    // probably want minvalue by pos 8,8,8,5,5?
+                    // probably want a bit more aggression here, if equal cost but ones player dominates the other
+                    // cost > current player && value < current player
+                    int costDiff = (get<1>(p) - get<1>(a));
+                    float valueDiff = get<2>(p) - get<2>(a);
+                    bool lessValuable = (valueDiff > epsilon);
+                    bool atLeastAsExpensive = costDiff <= 0;
+                    return (atLeastAsExpensive && lessValuable) ||
+                        costDiff <= -3;
+                }) >= PositionCount[i]);
+            });
+
+            positionPlayers.resize(distance(positionPlayers.begin(), it));
+        }
+
+        for (auto& p : positionPlayers)
+        {
+            myfile << get<0>(p);
+            myfile << ",";
+            myfile << get<1>(p);
+            myfile << ",";
+            myfile << get<2>(p);
+            myfile << ",";
+            myfile << get<3>(p);
+            myfile << ",";
+            myfile << get<4>(p);
+            myfile << ",";
+
+            myfile << endl;
+        }
+    }
+    myfile.close();
 }
 
 void removeDominatedPlayers(string filein, string fileout)
 {
     vector<Player> players = parsePlayers(filein);
-
     unordered_map<string, float> yahoo = parseYahooStats();
     unordered_map<string, float> fpros = parseProsStats();
     cout << "Mixing projections" << endl;
     for (auto& p : players)
     {
         auto itpros = fpros.find(p.name);
-        auto ity = yahoo.find(p.name);
+        //auto ity = yahoo.find(p.name);
 
         // linear reg models here:
 
         // players we dont want to include can just have large negative diff
-        if (itpros != fpros.end() && ity != yahoo.end())
+        if (itpros != fpros.end() /*&& ity != yahoo.end() || (itpros != fpros.end() && (p.pos != 4 && p.pos != 0))*/)
         {
             if (p.name == "david johnson" && p.pos == 3)
             {
@@ -647,7 +771,7 @@ void removeDominatedPlayers(string filein, string fileout)
             }
             else
             {
-                p.proj = mixPlayerProjections(p, p.proj, itpros->second, ity->second);
+                p.proj = mixPlayerProjections(p, p.proj, itpros->second, /*ity != yahoo.end() ? ity->second :*/ 0);
             }
         }
         else
@@ -1580,7 +1704,7 @@ void splitLineups(const string lineups)
     int i = 0;
     partition_copy(allLineups.begin(), allLineups.end(), back_inserter(setA), back_inserter(setB), [&i](vector<string>& l)
     {
-        bool setA = i++ < 20;
+        bool setA = i++ < 7;
         return setA;
     });
     sort(setA.begin(), setA.end(), [&originalOrder](vector<string>& la, vector<string>& lb)
@@ -1712,8 +1836,8 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, unordered_map<uint8_t, 
 
     for (auto & x : playerCounts)
     {
-        float percentOwned = (float)x.second / (float)TARGET_LINEUP_COUNT;
-        if (percentOwned > 0.25 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
+        float percentOwned = (float)x.second / (float)numLineups;
+        if (percentOwned > 0.6 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x](pair<uint8_t, float>& z)
         {
             return z.first == x.first;
         }) == ownershipLimits.end())
@@ -2804,7 +2928,7 @@ int main(int argc, char* argv[]) {
             {
                 fileout = "players.csv";
             }
-            importProjections(fileout, false, false);
+            removeDominatedPlayersProjFile();
         }
 
         if (strcmp(argv[1], "lineupselect") == 0)

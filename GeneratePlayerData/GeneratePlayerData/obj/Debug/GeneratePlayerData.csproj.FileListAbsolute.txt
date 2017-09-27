@@ -28,3 +28,4 @@ C:\Users\anbunn\dfs\dfs\GeneratePlayerData\GeneratePlayerData\bin\Debug\Newtonso
 C:\Users\anbunn\dfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.csprojResolveAssemblyReference.cache
 C:\Users\anbunn\dfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.exe
 C:\Users\anbunn\dfs\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.pdb
+C:\Users\andrewbunn\Documents\Visual Studio 2013\Projects\dfs\GeneratePlayerData\GeneratePlayerData\obj\Debug\GeneratePlayerData.csprojResolveAssemblyReference.cache

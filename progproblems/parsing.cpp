@@ -235,6 +235,7 @@ void normalizeName(string& name)
     // sr/jr
     static string sr = " sr";
     static string jr = " jr";
+    static string ii = " ii";
     // will fuller v but dont want all v names
     //static string v = " v";
 
@@ -242,6 +243,9 @@ void normalizeName(string& name)
     name.resize(distance(name.begin(), it));
 
     it = find_end(name.begin(), name.end(), jr.begin(), jr.end());
+    name.resize(distance(name.begin(), it));
+
+    it = find_end(name.begin(), name.end(), ii.begin(), ii.end());
     name.resize(distance(name.begin(), it));
 
     static array<string, 32> dsts = {
@@ -256,13 +260,13 @@ void normalizeName(string& name)
         "New England",
         "New Orleans",
         "Tampa Bay",
-        "Los Angeles",
+        "Los Angeles Rams",
+        "Los Angeles Chargers",
         "Philadelphia",
         "New York Jets",
         "Dallas",
         "Cincinnati",
         "Cleveland",
-        "San Diego",
         "Minnesota",
         "Washington",
         "San Francisco",
@@ -288,9 +292,16 @@ void normalizeName(string& name)
     });
     if (i != dsts.end())
     {
-        if (*i == "washington" && name[0] == 'd')
+        if (*i == "washington" )
         {
-            // rb dwayne/deandre
+            if (name[0] == 'd' || name[0] == 't')
+            {
+                // rb dwayne/deandre
+            }
+            else
+            {
+                name = *i;
+            }
         }
         else
         {
@@ -665,6 +676,8 @@ void parseHistoricalProjFiles()
             // apparently fpros is actually: cbs, espn, numberfire, stats, fftoday
             // need fftoday to split out separate
             float STATSval = entry.second;
+            //TEMP:
+
             allProjs.push_back(STATSval);
             float avg = accumulate(allProjs.begin(), allProjs.end(), 0.f) / (float)allProjs.size();
             auto it = results.find(entry.first);
@@ -796,23 +809,20 @@ unordered_map<string, float> parseProsStats()
             */
             if (tokens[0] != "david johnson" || pos == 1)
             {
-                if (results.find(tokens[0]) != results.end())
+                if (tokens[0] != "cleveland" || pos == 4)
                 {
-                    cout << tokens[0] << endl;
-                    if (tokens[0] == "cleveland")
+                    if (results.find(tokens[0]) != results.end())
                     {
-                        // player named cleveland
-                        results[tokens[0]] = proj;
+                        cout << tokens[0] << endl;
+                        if (tokens[0] != "ty montgomery" && proj > 5 && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
+                        {
+                            throw invalid_argument("Invalid player: " + tokens[0]);
+                        }
                     }
-                    //if (tokens[0] != "ty montgomery" && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
-                    else if (tokens[0] != "ty montgomery" && proj > 5 && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
+                    else
                     {
-                        throw invalid_argument("Invalid player: " + tokens[0]);
+                        results.emplace(tokens[0], proj);
                     }
-                }
-                else
-                {
-                    results.emplace(tokens[0], proj);
                 }
             }
             tokens = getNextLineAndSplitIntoTokens(file);

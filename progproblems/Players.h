@@ -4,13 +4,13 @@
 
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 120000
+#define LINEUPCOUNT 100000
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 20000
+#define SIMULATION_COUNT 25000
 // number of random lineup sets to select
 #define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
-#define TARGET_LINEUP_COUNT 45
+#define TARGET_LINEUP_COUNT 26
 // number of pools to generate
 #define NUM_ITERATIONS_OWNERSHIP 100
 #define STOCHASTIC_OPTIMIZER_RUNS 50

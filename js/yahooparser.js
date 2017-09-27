@@ -7,7 +7,7 @@ for (var i = 0; i < players.length; i++)
 	name.trim();
 	str += name + ",";
 	var tds = players[i].getElementsByTagName("td");
-	str += tds[5].innerText.slice(1);
+	str += tds[6].innerText.slice(1);
 	var position = tds[0].innerText;
 	var pos;
 	switch(position) {

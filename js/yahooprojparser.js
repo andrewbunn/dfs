@@ -30,10 +30,15 @@ function getData()
 			name = name.substring(0, name.lastIndexOf(' '));
 		}
 		str += name.trim();
-		var score = cols[6].innerText;
+		var scoreIndex = 7;
+		if (pos == " DEF")
+		{
+			scoreIndex = 6;
+		}
+		var score = cols[scoreIndex].innerText;
 		str += "," + score.trim();
 		var allZero = true;
-		for (var j = 10; j < cols.length; j++)
+		for (var j = 11; j < cols.length; j++)
 		{
 			var val = cols[j].innerText;
 			str += "," + val.trim();

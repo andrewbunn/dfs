@@ -74,7 +74,7 @@ namespace GeneratePlayerData
             }
 
             // Add the call for the reddit thread response
-            httpResponses.Add(client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI));
+            //httpResponses.Add(client.GetAsync(REDDIT_BASE_URI + REDDIT_DEFENSE_URI));
 
             await Task.WhenAll(httpResponses);
 
@@ -99,7 +99,7 @@ namespace GeneratePlayerData
             // 2. Fetch the post, find the link to the blog post
             // 3. Go to the blog post & fetch projection data
             // ** (1) **
-            var redditUserHistoryResult = await httpResponses[httpResponses.Count-1].Result.Content.ReadAsStringAsync();
+            /*var redditUserHistoryResult = await httpResponses[httpResponses.Count-1].Result.Content.ReadAsStringAsync();
             HtmlDocument userHistoryDoc = new HtmlDocument();
             userHistoryDoc.LoadHtml(redditUserHistoryResult);
             var topPost = userHistoryDoc.DocumentNode.SelectSingleNode("//div[contains(@id,'siteTable')]/div[contains(@class,'thing')]");
@@ -121,7 +121,7 @@ namespace GeneratePlayerData
             var blogData = JsonConvert.DeserializeObject<EmpeopledBlogPostResponse>(blogPostResult);
             HtmlDocument blogPostDoc = new HtmlDocument();
             blogPostDoc.LoadHtml(blogData.Data.Content.Body);
-            var blogDefenseNodes = blogPostDoc.DocumentNode.SelectNodes("//ol/li");
+            var blogDefenseNodes = blogPostDoc.DocumentNode.SelectNodes("//ol/li");*/
 
             List<PlayerProjectionData> playerData = new List<PlayerProjectionData>();
             List<PlayerProjectionData> defenseData = new List<PlayerProjectionData>();
@@ -152,7 +152,7 @@ namespace GeneratePlayerData
                 else
                     playerData.Add(playerProjectionData);
             }
-
+            /*
             // Now translate the defense data from the blog post and merge with the existing defense information
             List<PlayerProjectionData> blogDefenseData = new List<PlayerProjectionData>();
             foreach(var blogDefenseRow in blogDefenseNodes)
@@ -179,7 +179,7 @@ namespace GeneratePlayerData
                     defense.Projection = (BASE_DEFENSE_BLOG_PROJ * BLOG_DEFENSE_WEIGHT) + (defense.Projection * NUMBERFIRE_DEFENSE_WEIGHT);
             }
             playerData.AddRange(defenseData);
-            
+            */
             return playerData;
         }
 
@@ -219,7 +219,7 @@ namespace GeneratePlayerData
                             (!string.IsNullOrEmpty(n.Position) ? 
                             n.PositionEnum == player.PositionEnum : true)).FirstOrDefault();
 
-                        var exclude = !includeThursdayPlayers && (player.GameStartTime.DayOfWeek == DayOfWeek.Thursday || player.GameStartTime.DayOfWeek == DayOfWeek.Saturday);
+                        var exclude = !includeThursdayPlayers && (player.GameStartTime.DayOfWeek == DayOfWeek.Thursday);
                         var gameFinished = player.GameStartTime < DateTime.Now;
                         if (matchingPlayer != null && !exclude && !gameFinished)
                         {
