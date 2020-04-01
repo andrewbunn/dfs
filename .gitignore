@@ -21,6 +21,7 @@ progproblems/*.csv
 Release/*
 Debug/*
 x64/*
+.vs/*
 progproblems/Debug/*
 progproblems/Release/*
 progproblems/x64/*
