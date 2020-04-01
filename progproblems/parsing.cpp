@@ -769,44 +769,7 @@ unordered_map<string, float> parseProsStats()
             }
 
             proj += rec * .5;
-            /*
-            float payds = 0.f;
-            float patds = 0.f;
-            float ints = 0.f;
-            float ruyds = 0.f;
-            float rutds = 0.f;
-            float fls = 0.f;
-            float rec = 0.f;
-            float reyds = 0.f;
-            float retds = 0.f;
-            if (i == 0)
-            {
-                payds = stof(tokens[3]);
-                patds = stof(tokens[4]);
-                ints = stof(tokens[5]);
-                ruyds = stof(tokens[7]);
-                rutds = stof(tokens[8]);
-                fls = stof(tokens[9]);
-            }
-            else if (i == 1 || i == 2)
-            {
-                ruyds = stof(tokens[2]);
-                rutds = stof(tokens[3]);
-                rec = stof(tokens[4]);
-                reyds = stof(tokens[5]);
-                retds = stof(tokens[6]);
-                fls = stof(tokens[7]);
-            }
-            else if (i == 3)
-            {
-                rec = stof(tokens[1]);
-                reyds = stof(tokens[2]);
-                retds = stof(tokens[3]);
-                fls = stof(tokens[4]);
-            }
-            float proj = payds * .04 + patds * 4 + ints * -1 + ruyds * .1 + rutds * 6 + fls * -2 + rec * .5 + reyds * .1 + retds * 6;
-            // may also want to "prune" projections here
-            */
+
             if (tokens[0] != "david johnson" || pos == 1)
             {
                 if (tokens[0] != "cleveland" || pos == 4)
