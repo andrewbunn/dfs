@@ -1,4 +1,5 @@
-#pragma once
+
+#define _DISABLE_EXTENDED_ALIGNED_STORAGE 1
 #include <vector>
 #include <array>
 #include <list>
@@ -22,6 +23,7 @@
 #include <numeric>
 #include <bitset>
 #include <future>
+#include <execution>
 #define ASIO_MSVC _MSC_VER
 #include "test.h"
 #include "parsing.h"
@@ -30,9 +32,14 @@
 
 #include <cassert>
 #include <cmath>
+#ifdef USE_MKL
 #include <mkl.h>
+#else
+#endif
+
+
 #include "asio.hpp"
-#include "asio/use_future.hpp"
+//#include "asio/use_future.hpp"
 #include "server.h"
 
 using namespace concurrency;
@@ -48,9 +55,10 @@ vector<Players2> knapsackPositionsN(int budget, int pos, const Players2 oldLineu
         skipPositionSet &= ~(1 << pos);
         pos++;
     }
+
     if (pos >= 9)
     {
-        return vector<Players2>(1, oldLineup);
+        return vector<Players2>{oldLineup};
     }
 
 
@@ -88,7 +96,7 @@ vector<Players2> knapsackPositionsN(int budget, int pos, const Players2 oldLineu
     if (pos <= 2)
     {
         vector<vector<Players2>> lineupResults(players[pos].size() - startPos);
-        parallel_transform(begin(players[pos]) + startPos, end(players[pos]), begin(lineupResults), loop);
+        transform(execution::par_unseq, begin(players[pos]) + startPos, end(players[pos]), begin(lineupResults), loop);
 
         vector<Players2> merged;
         merged.reserve(LINEUPCOUNT * 2);
@@ -295,11 +303,23 @@ void saveLineupList(vector<Player>& p, vector<Players2>& lineups, string fileout
     for (auto lineup : lineups)
     {
         int totalcost = 0;
-        uint64_t bitset = lineup.bitset1;
+        bitset<128> bitset = lineup.set;
         int count = 0;
+        for (int i = 0; i < 128 && bitset != 0 && count < lineup.totalCount; i++)
+        {
+            if (bitset[i])
+            {
+                bitset[i] = false;
+                count++;
+                myfile << p[i].name;
+                totalcost += p[i].cost;
+                myfile << endl;
+            }
+        }
+        /*
         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
         {
-            if (bitset & 1 == 1)
+            if ((bitset & 1) == 1)
             {
                 count++;
                 myfile << p[i].name;
@@ -312,7 +332,7 @@ void saveLineupList(vector<Player>& p, vector<Players2>& lineups, string fileout
         bitset = lineup.bitset2;
         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
         {
-            if (bitset & 1 == 1)
+            if ((bitset & 1) == 1)
             {
                 count++;
                 myfile << p[64 + i].name;
@@ -320,7 +340,7 @@ void saveLineupList(vector<Player>& p, vector<Players2>& lineups, string fileout
                 myfile << endl;
             }
             bitset = bitset >> 1;
-        }
+        }*/
 
         myfile << lineup.value;
         myfile << endl;
@@ -355,7 +375,8 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart)
     }
 
     double msTime = 0;
-    vector<Players2> lineups = generateLineupN(p, vector<string>(), startingLineup, budgetUsed, msTime);
+    vector<string> empty;
+    vector<Players2> lineups = generateLineupN(p, empty, startingLineup, budgetUsed, msTime);
     saveLineupList(p, lineups, fileout, msTime);
 }
 
@@ -692,7 +713,7 @@ inline float determineWinnings(float score, array<uint8_t, CONTENDED_PLACEMENT_S
         if (it - cutoffs.begin() < CONTENDED_PLACEMENT_SLOTS)
         {
             // we have 50 slots available so as long as lineupset coun t doesnt increase this can't overflow. still almost impossible
-            while ((placements[it - cutoffs.begin()] == slotsAvailable[it - cutoffs.begin()]))
+            while (placements[it - cutoffs.begin()] == slotsAvailable[it - cutoffs.begin()])
             {
                 it++;
             }
@@ -721,22 +742,25 @@ float runSimulationMaxWin(
     // vector math:
     // calc corr normals
     // do stddev * entire std normals
-    const int len = SIMULATION_COUNT * allPlayers.size();
+    //const int len = SIMULATION_COUNT * allPlayers.size();
 
 
     for (int index = 0; index < SIMULATION_COUNT; index++)
     {
         const float* playerStandardNormals = &standardNormals[allPlayers.size() * index];
         array<float, 128> playerScores;
+#ifdef USE_MKL
         vsMul(allPlayers.size(), stdevs, playerStandardNormals, &playerScores[0]);
+#endif
 
         for (int i = 1; i < corrPairs.size(); i += 2)
         {
             float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
             playerScores[corrPairs[i]] = stdevs[i] * (playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1);
         }
-
+#ifdef USE_MKL
         vsAdd(allPlayers.size(), projs, &playerScores[0], &playerScores[0]);
+#endif
 
         int winnings = 0;
         for (auto& lineup : lineups)
@@ -758,7 +782,7 @@ float runSimulationMaxWin(
     // is variation even useful here?
     float expectedValue = (float)winningThresholdsHit / (float)SIMULATION_COUNT;
 
-    float stdDev = 1.f;
+    //float stdDev = 1.f;
     return expectedValue;
 }
 
@@ -841,7 +865,7 @@ vector<string> enforceOwnershipLimits(vector<Player>& p, array<int, 256>& player
     {
         if (playerCounts[i]) {
             float percentOwned = (float)playerCounts[i] / (float)numLineups;
-            if (percentOwned > 0.6 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [&x, i](pair<uint8_t, float>& z)
+            if (percentOwned > 0.6 && find_if(ownershipLimits.begin(), ownershipLimits.end(), [i](pair<uint8_t, float>& z)
                 {
                     return z.first == i;
                 }) == ownershipLimits.end())
@@ -884,14 +908,16 @@ int selectorCore(
         [&allLineups, &p, &bestset, &projs, &stdevs, &corrPairs, &corrCoeffs](int lineupChunkStart)
     {
         static thread_local unique_ptr<float[]> standardNormals(new float[(size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)min((size_t)lineupChunkSize, allLineups.size())]);
-        unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
         int currentLineupCount = min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);
+#ifdef USE_MKL
+        unsigned seed2 = std::chrono::system_clock::now().time_since_epoch().count();
         const size_t n = (size_t)p.size() * (size_t)SIMULATION_COUNT * (size_t)currentLineupCount;
         VSLStreamStatePtr stream;
         vslNewStream(&stream, VSL_BRNG_SFMT19937, seed2);
         int status = vsRngGaussian(VSL_RNG_METHOD_GAUSSIAN_BOXMULLER2,
             stream, n, &standardNormals[0], 0.0, 1.0);
         vslDeleteStream(&stream);
+#endif
 
         int indexBegin = lineupChunkStart;
         int indexEnd = indexBegin + currentLineupCount;
@@ -977,7 +1003,7 @@ void greedyLineupSelector()
         }
     }
 
-    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    //unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     auto start = chrono::steady_clock::now();
 
     vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
@@ -986,8 +1012,9 @@ void greedyLineupSelector()
     uint64_t currentDisallowedSet1 = 0;
     uint64_t currentDisallowedSet2 = 0;
     vector<string> currentPlayersRemoved;
-
+#ifdef USE_MKL
     vmlSetMode(VML_EP);
+#endif
 
     ofstream myfile;
     myfile.open("outputset.csv");
@@ -997,7 +1024,7 @@ void greedyLineupSelector()
     vector<int> bestsetIndex;
     bestsetIndex.reserve(TARGET_LINEUP_COUNT);
 
-    int z = 0;
+    //int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         int lineupsIndexStart = 0;
@@ -1049,7 +1076,7 @@ void greedyLineupSelector()
                 }
                 cout << endl;
                 cout << endl;
-                array<uint64_t, 2> disSets = { disallowedSet1 , disallowedSet2 };
+                //array<uint64_t, 2> disSets = { disallowedSet1 , disallowedSet2 };
                 //disallowedPlayersToLineupSet.emplace(disSets, allLineups);
                 currentPlayersRemoved = playersToRemove;
                 currentDisallowedSet1 = disallowedSet1;
@@ -1062,12 +1089,23 @@ void greedyLineupSelector()
                     allLineups.clear();
                     for (auto& lineup : lineups)
                     {
-                        uint64_t bitset = lineup.bitset1;
                         int count = 0;
                         vector<uint8_t> currentLineup;
+                        bitset<128> bitset = lineup.set;
+                        for (int i = 0; i < 128 && bitset != 0 && count < lineup.totalCount; i++)
+                        {
+                            if (bitset[i])
+                            {
+                                count++;
+                                currentLineup.push_back((uint8_t)i);
+                                bitset[i] = false;
+                            }
+                        }
+                        /*
+                        uint64_t bitset = lineup.bitset1;
                         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                         {
-                            if (bitset & 1 == 1)
+                            if ((bitset & 1) == 1)
                             {
                                 count++;
                                 currentLineup.push_back((uint8_t)i);
@@ -1077,13 +1115,14 @@ void greedyLineupSelector()
                         bitset = lineup.bitset2;
                         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                         {
-                            if (bitset & 1 == 1)
+                            if ((bitset & 1) == 1)
                             {
                                 count++;
                                 currentLineup.push_back((uint8_t)i + 64);
                             }
                             bitset = bitset >> 1;
                         }
+                        */
                         allLineups.push_back(currentLineup);
                     }
                 }
@@ -1130,10 +1169,13 @@ void distributedLineupSelector()
     udp::resolver resolver(io_service);
     udp::socket socket(io_service, udp::v4());
 
+    /*
+    need futures/exceptions:
     std::future<udp::resolver::iterator> iterUdp =
             resolver.async_resolve(
         { udp::v4(), "ANBUNN5", "9000" },
                 asio::use_future);
+                */
 
     vector<Player> p = parsePlayers("players.csv");
     vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
@@ -1188,10 +1230,10 @@ void distributedLineupSelector()
         }
     }
 
-    unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
+    //unsigned seed1 = std::chrono::system_clock::now().time_since_epoch().count();
     auto start = chrono::steady_clock::now();
 
-    int totalSets = 2;// NUM_ITERATIONS_OWNERSHIP;// ownership.size();
+    //int totalSets = 2;// NUM_ITERATIONS_OWNERSHIP;// ownership.size();
     vector<vector<uint8_t>> allLineups = parseLineups("output.csv", playerIndices);
     // copy output to sharedoutput for initial runs
     {
@@ -1208,8 +1250,9 @@ void distributedLineupSelector()
     uint64_t currentDisallowedSet1 = 0;
     uint64_t currentDisallowedSet2 = 0;
     vector<string> currentPlayersRemoved;
-    
+#ifdef USE_MKL
     vmlSetMode(VML_EP);
+#endif
 
     ofstream myfile;
     myfile.open("outputset.csv");
@@ -1218,9 +1261,9 @@ void distributedLineupSelector()
     lineup_set bestset;
     vector<int> bestsetIndex;
 
-    udp::endpoint endpoint_ = *iterUdp.get();
+    udp::endpoint endpoint_;// = *iterUdp.get();
 
-    int z = 0;
+    //int z = 0;
     for (int i = 0; i < TARGET_LINEUP_COUNT; i++)
     {
         int lineupsIndexStart = 0;
@@ -1250,19 +1293,20 @@ void distributedLineupSelector()
         // just send last lineup, keep state on server, tell server to "reset"
         snprintf(&request_buf[0], request_buf.size(), "select %d %d %d: %s", distributedLineupStart, distributedLineupEnd, setLen, &bestsetIndices[0]);
             
+        /* todo futures/EH
         std::future<std::size_t> send_length =
             socket.async_send_to(asio::buffer(request_buf),
                 endpoint_,
                 asio::use_future);
 
-        send_length.get();
+        send_length.get();*/
+        //size_t send_length = 1024;
 
-        udp::endpoint sender_endpoint;
-        future<size_t> recv_length =
+        /*future<size_t> recv_length =
             socket.async_receive_from(
                 asio::buffer(recv_buf),
                 sender_endpoint,
-                asio::use_future);
+                asio::use_future);*/
 
         bestsetIndex.push_back(selectorCore(
             p,
@@ -1274,7 +1318,7 @@ void distributedLineupSelector()
             bestset    // request data
         ));
 
-        size_t result = recv_length.get();
+        size_t result = 1024;// recv_length.get();
         if (result > 0)
         {
             int resultIndex;
@@ -1325,7 +1369,7 @@ void distributedLineupSelector()
                 }
                 cout << endl;
                 cout << endl;
-                array<uint64_t, 2> disSets = { disallowedSet1 , disallowedSet2 };
+                //array<uint64_t, 2> disSets = { disallowedSet1 , disallowedSet2 };
                 //disallowedPlayersToLineupSet.emplace(disSets, allLineups);
                 currentPlayersRemoved = playersToRemove;
                 currentDisallowedSet1 = disallowedSet1;
@@ -1377,9 +1421,9 @@ void distributedLineupSelector()
                         sprintf(currI, "%d,", playerIndices[s]);
                         currI = strchr(currI, ',') + 1;
                     }
-                    snprintf(&request_buf[0], request_buf.size(), "optimize %d: %s", playersToRemoveDistributed.size(), &playersToRemoveIndicies[0]);
+                    snprintf(&request_buf[0], request_buf.size(), "optimize %d: %s", (int)playersToRemoveDistributed.size(), &playersToRemoveIndicies[0]);
 
-
+                    /* todo EH/future
                     future<std::size_t> sendOptimizeLength =
                         socket.async_send_to(asio::buffer(request_buf),
                             endpoint_,
@@ -1393,9 +1437,10 @@ void distributedLineupSelector()
                             asio::buffer(recv_buf),
                             senderOptimize_endpoint,
                             asio::use_future);
+                            */
 
                     vector<Players2> lineups = generateLineupN(p, playersToRemove, Players2(), 0, msTime);
-                    if (recvOptimizelength.get() > 0)
+                    //if (recvOptimizelength.get() > 0)
                     {
                         cout << "Got response from server." << endl;
                         vector<Players2> distributedLineups = parseLineupsData("\\\\ANBUNN5\\Users\\andrewbunn\\dfs\\progproblems\\sharedlineups.csv");
@@ -1410,12 +1455,23 @@ void distributedLineupSelector()
                         allLineups.clear();
                         for (auto& lineup : lineups)
                         {
-                            uint64_t bitset = lineup.bitset1;
                             int count = 0;
                             vector<uint8_t> currentLineup;
+                            bitset<128> bitset = lineup.set;
+                            for (int i = 0; i < 128 && bitset != 0 && count < lineup.totalCount; i++)
+                            {
+                                if (bitset[i])
+                                {
+                                    count++;
+                                    currentLineup.push_back((uint8_t)i);
+                                    bitset[i] = false;
+                                }
+                            }
+                            /*
+                            uint64_t bitset = lineup.bitset1;
                             for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                             {
-                                if (bitset & 1 == 1)
+                                if ((bitset & 1) == 1)
                                 {
                                     count++;
                                     currentLineup.push_back((uint8_t)i);
@@ -1425,13 +1481,13 @@ void distributedLineupSelector()
                             bitset = lineup.bitset2;
                             for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                             {
-                                if (bitset & 1 == 1)
+                                if ((bitset & 1) == 1)
                                 {
                                     count++;
                                     currentLineup.push_back((uint8_t)i + 64);
                                 }
                                 bitset = bitset >> 1;
-                            }
+                            }*/
                             allLineups.push_back(currentLineup);
                         }
 
@@ -1446,12 +1502,23 @@ void distributedLineupSelector()
                     allLineups.clear();
                     for (auto& lineup : lineups)
                     {
-                        uint64_t bitset = lineup.bitset1;
                         int count = 0;
                         vector<uint8_t> currentLineup;
+                        bitset<128> bitset = lineup.set;
+                        for (int i = 0; i < 128 && bitset != 0 && count < lineup.totalCount; i++)
+                        {
+                            if (bitset[i])
+                            {
+                                count++;
+                                currentLineup.push_back((uint8_t)i);
+                                bitset[i] = false;
+                            }
+                        }
+                        /*
+                        uint64_t bitset = lineup.bitset1;
                         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                         {
-                            if (bitset & 1 == 1)
+                            if ((bitset & 1) == 1)
                             {
                                 count++;
                                 currentLineup.push_back((uint8_t)i);
@@ -1461,13 +1528,14 @@ void distributedLineupSelector()
                         bitset = lineup.bitset2;
                         for (int i = 0; i < 64 && bitset != 0 && count < lineup.totalCount; i++)
                         {
-                            if (bitset & 1 == 1)
+                            if ((bitset & 1) == 1)
                             {
                                 count++;
                                 currentLineup.push_back((uint8_t)i + 64);
                             }
                             bitset = bitset >> 1;
                         }
+                        */
                         allLineups.push_back(currentLineup);
                     }
                     saveLineupList(p, lineups, "\\\\bunn\\Users\\andrewbunn\\Documents\\Visual Studio 2013\\Projects\\dfs\\progproblems\\sharedoutput.csv", msTime);
@@ -1675,29 +1743,6 @@ int main(int argc, char* argv[]) {
                 fileout = "players.csv";
             }
             removeDominatedPlayers(filein, fileout);
-        }
-
-        if (strcmp(argv[1], "lineupselectownership") == 0)
-        {
-            string playersFile, ownershipFile;
-            if (argc > 2)
-            {
-                playersFile = argv[2];
-            }
-            else
-            {
-                playersFile = "players.csv";
-            }
-
-            if (argc > 3)
-            {
-                ownershipFile = argv[3];
-            }
-            else
-            {
-                ownershipFile = "ownership.csv";
-            }
-            lineupSelectorOwnership(ownershipFile, playersFile);
         }
 
         if (strcmp(argv[1], "splituplineups") == 0)

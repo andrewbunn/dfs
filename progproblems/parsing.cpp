@@ -1,4 +1,3 @@
-#pragma once
 #include "parsing.h"
 #include <algorithm>
 #include <array>
@@ -27,7 +26,6 @@ vector<string> parseNames(string filename)
     vector<string> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
     while (tokens.size() == 1)
     {
         result.emplace_back(tokens[0]);
@@ -42,7 +40,6 @@ vector<tuple<string, string, float>> parseCorr(string filename)
     vector<tuple<string, string, float>> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
     while (tokens.size() == 3)
     {
         result.emplace_back(tokens[0], tokens[1], stof(tokens[2]));
@@ -146,7 +143,8 @@ vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string
                 }
                 else
                 {
-                    throw invalid_argument("Invalid player: " + tokens[0]);
+                    //throw invalid_argument("Invalid player: " + tokens[0]);
+                    cout << "Invalid player: " << tokens[0] << endl;
                 }
             }
             else
@@ -172,9 +170,17 @@ void writeLineupsData(string filename, vector<Players2>& lineups)
     myfile.open(filename);
     for (auto& lineup : lineups)
     {
-        myfile << lineup.bitset1;
+        uint64_t set1 = (uint64_t)lineup.bits;
+        myfile << set1;
         myfile << ",";
-        myfile << lineup.bitset2;
+        uint64_t set2 = 0;
+        for (int i = 64; i < 128; ++i) {
+            if (lineup.set[i]) {
+                set2 |= 1 << (i - 64);
+            }
+        }
+
+        myfile << set2;
         myfile << ",";
         for (auto x : lineup.posCounts)
         {
@@ -185,7 +191,7 @@ void writeLineupsData(string filename, vector<Players2>& lineups)
         myfile << ",";
         myfile << lineup.value;
         myfile << ",";
-        myfile << lineup.hasFlex ? 1 : 0;
+        myfile << lineup.hasFlex;
         myfile << endl;
     }
 
@@ -204,8 +210,14 @@ vector<Players2> parseLineupsData(string filename)
     {
         int idx = 0;
         Players2 lineup;
-        lineup.bitset1 = stoull(tokens[idx++]);
-        lineup.bitset2 = stoull(tokens[idx++]);
+        //lineup.bitset1 = stoull(tokens[idx++]);
+        //lineup.bitset2 = stoull(tokens[idx++]);
+        uint64_t set1 = stoull(tokens[idx++]);
+        uint64_t set2 = stoull(tokens[idx++]);
+        unsigned __int128 b = set2;
+        b <<= 64;
+        b |= set1;
+        lineup.bits = b;
         for (int x = 0; x < lineup.posCounts.size(); x++)
         {
             lineup.posCounts[x] = stoi(tokens[idx++]);
@@ -315,7 +327,7 @@ void normalizeName(string& name)
     }
     else if (name == "will fuller v")
     {
-        name == "will fuller";
+        name = "will fuller";
     }
 }
 
@@ -324,7 +336,6 @@ vector<tuple<string, int, int>> parseCosts(string filename)
     vector<tuple<string, int, int>> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
     while (tokens.size() == 3)
     {
         int c = stoi(tokens[1]);
@@ -346,7 +357,6 @@ unordered_map<string, float> parseProjections(string filename)
     unordered_map<string, float> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
     // two david johnsons, just only add first value for now, should be fine
     while (tokens.size() >= 2)
     {
@@ -379,7 +389,6 @@ vector<pair<string, float>> parseOwnership(string filename)
     vector<pair<string, float>> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    int count = 0;
     // two david johnsons, just only add first value for now, should be fine
     while (tokens.size() >= 2)
     {
@@ -587,7 +596,7 @@ int getSourceId(array<string, 8>& sources, string source)
     }
     else
     {
-        return distance(sources.begin(), i);
+        return (int)distance(sources.begin(), i);
     }
 }
 
@@ -636,9 +645,9 @@ void parseHistoricalProjFiles()
 
     // nerd size so small, probably unusable
     int numberfireTable = 2;
-    int ESPNTable = 0;
-    int yahooTable = 1;
-    int cbsTable = 3;
+    //int ESPNTable = 0;
+    //int yahooTable = 1;
+    //int cbsTable = 3;
     parseNumberFireProjFiles(histProjections[numberfireTable]);
     cout << histProjections.size() << endl;
 
@@ -768,7 +777,7 @@ unordered_map<string, float> parseProsStats()
                 rec = stof(tokens[1]);
             }
 
-            proj += rec * .5;
+            proj += rec * .5f;
 
             if (tokens[0] != "david johnson" || pos == 1)
             {
@@ -779,7 +788,8 @@ unordered_map<string, float> parseProsStats()
                         cout << tokens[0] << endl;
                         if (tokens[0] != "ty montgomery" && proj > 5 && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
                         {
-                            throw invalid_argument("Invalid player: " + tokens[0]);
+                            //throw invalid_argument("Invalid player: " + tokens[0]);
+                            cout << "Invalid player: " << tokens[0] << endl;
                         }
                     }
                     else
@@ -813,7 +823,7 @@ unordered_map<string, float> parseYahooStats()
             ostringstream id;
             float proj = stof(tokens[1]);
             float rec = pos < 4 ? stof(tokens[9]) : 0.f;
-            proj += rec * .5;
+            proj += rec * .5f;
             /*
             float payds = stof(tokens[1]);
             float patds = stof(tokens[2]);
@@ -837,7 +847,8 @@ unordered_map<string, float> parseYahooStats()
                     //if (tokens[0] != "ty montgomery" && tokens[0] != "daniel brown" && tokens[0] != "neal sterling")
                     if (tokens[0] != "ty montgomery" && proj > 5 && results.find(tokens[0])->second != proj)
                     {
-                        throw invalid_argument("Invalid player: " + tokens[0]);
+                        //throw invalid_argument("Invalid player: " + tokens[0]);
+                        cout << "Invalid player: " << tokens[0] << endl;
                     }
                 }
                 else

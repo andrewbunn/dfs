@@ -39,7 +39,7 @@ void throw_exception(const Exception& e);
 template <typename Exception>
 void throw_exception(const Exception& e)
 {
-  throw e;
+  //throw e;
 }
 # endif // !defined(ASIO_NO_EXCEPTIONS)
 

@@ -1,32 +1,19 @@
 #include "Players.h"
+#include <immintrin.h>
 
 bool operator==(const Players2& first, const Players2& other) {
-    return (first.bitset1 == other.bitset1) && (first.bitset2 == other.bitset2);
+    return (first.bits == other.bits);
 }
 
 bool operator!=(const Players2& first, const Players2& other) {
-    return (first.bitset1 != other.bitset1) || (first.bitset2 != other.bitset2);
+    return (first.bits != other.bits);
 }
 
 bool operator<(const Players2& lhs, const Players2& rhs)
 {
-    // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.value - rhs.value;
-    if (diff == 0)
-    {
-        if (lhs.bitset2 == rhs.bitset2)
-        {
-            return lhs.bitset1 > rhs.bitset1;
-        }
-        else
-        {
-            return lhs.bitset2 > rhs.bitset2;
-        }
-    }
-    else
-    {
-        return diff > 0;
-    }
+    if (lhs.value != rhs.value)
+        return lhs.value > rhs.value;
+    return lhs.bits > rhs.bits;
 }
 
 bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other) {
@@ -36,13 +23,10 @@ bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other
 bool operator<(const lineup_set& lhs, const lineup_set& rhs)
 {
     // backwards so highest value is "lowest" (best ranked lineup)
-    float diff = lhs.ev - rhs.ev;
-    if (diff == 0)
+    if (lhs.ev != rhs.ev)
     {
-        return lhs.stdev < rhs.stdev;
+        return lhs.ev > rhs.ev;
+        
     }
-    else
-    {
-        return diff > 0;
-    }
+    return lhs.stdev < rhs.stdev;
 }

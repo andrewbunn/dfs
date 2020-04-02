@@ -4,6 +4,9 @@
 #include <iostream>
 #include <memory>
 #include <utility>
+#define ASIO_NO_EXCEPTIONS
+#define ASIO_NO_TYPEID
+
 #include "asio.hpp"
 #include "Players.h"
 #include "parsing.h"

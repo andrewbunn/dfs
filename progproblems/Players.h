@@ -1,14 +1,14 @@
 #pragma once
 #include <vector>
 #include <array>
-
+#include <nmmintrin.h>
+#include <stdint.h>
+#include <bitset>
 
 // number of lineups to generate in optimizen - TODO make parameter
 #define LINEUPCOUNT 100000
 // number of simulations to run of a set of lineups to determine expected value
 #define SIMULATION_COUNT 25000
-// number of random lineup sets to select
-#define RANDOM_SET_COUNT 10000
 // number of lineups we want to select from total pool
 #define TARGET_LINEUP_COUNT 26
 // number of pools to generate
@@ -32,8 +32,10 @@ constexpr int PositionCount[5] = { 1, 2, 3, 1, 1 };
 constexpr int slots[9] = { 0, 1, 1, 2, 2, 2, 3, 5/*flex*/, 4 };
 
 struct Players2 {
-    uint64_t bitset1;
-    uint64_t bitset2;
+    union {
+        unsigned __int128 bits;
+        std::bitset<128> set;
+    };
     array<uint8_t, 5> posCounts;
     uint8_t totalCount;
     float value;
@@ -41,29 +43,13 @@ struct Players2 {
 
     inline bool addPlayer(int pos, float proj, int index)
     {
-        if (index > 63)
+        if (!set[index])
         {
-            uint64_t bit = (uint64_t)1 << (index - 64);
-            if ((bitset2 & bit) == 0)
-            {
-                posCounts[pos]++;
-                bitset2 |= bit;
-                totalCount++;
-                value += proj;
-                return true;
-            }
-        }
-        else
-        {
-            uint64_t bit = (uint64_t)1 << index;
-            if ((bitset1 & bit) == 0)
-            {
-                posCounts[pos]++;
-                bitset1 |= bit;
-                totalCount++;
-                value += proj;
-                return true;
-            }
+            set[index] = true;
+            posCounts[pos]++;
+            totalCount++;
+            value += proj;
+            return true;
         }
         return false;
     }
@@ -86,11 +72,11 @@ struct Players2 {
         return succeeded;
     }
 
-    bool Players2::operator==(const Players2& other) {
-        return (bitset1 == other.bitset1) && (bitset2 == other.bitset2);
+    bool operator==(const Players2& other) {
+        return bits == other.bits;
     }
 
-    Players2() : totalCount(0), value(0), bitset1(0), bitset2(0), hasFlex(false)
+    Players2() : bits(0), totalCount(0), value(0), hasFlex(false)
     {
         posCounts.fill(0);
     }
@@ -120,7 +106,7 @@ struct lineup_set
         return (ev - (10 * set.size())) / stdev;
     }
     lineup_set() : ev(0.f), stdev(1.f) {}
-    lineup_set(vector<vector<uint8_t>>& s) : ev(0.f), stdev(1.f), set(s) {}
+    lineup_set(vector<vector<uint8_t>>& s) : set(s), ev(0.f), stdev(1.f)  {}
 };
 
 bool operator<(const lineup_set& lhs, const lineup_set& rhs);
