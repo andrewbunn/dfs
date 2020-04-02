@@ -121,7 +121,7 @@ vector<Players2> knapsackPositionsN(int budget, int pos, const Players2 oldLineu
         for (auto& lineup : lineupResults)
         {
             const int originalLen = merged.size();
-            sort(lineup.begin(), lineup.end());
+            //sort(lineup.begin(), lineup.end());
             merged.insert(merged.end(), lineup.begin(), lineup.end());
             inplace_merge(merged.begin(), merged.begin() + originalLen, merged.end());
 
@@ -149,15 +149,10 @@ vector<Players2> knapsackPositionsN(int budget, int pos, const Players2 oldLineu
         if (pos == 7)
         {
             int index = rbStartPos * 256 + wrStartPos + teStartPos * 65536;
-            //int index = rbStartPos * 256 + wrStartPos;
             auto it = filtedFlex.find(index);
             if (it != filtedFlex.end())
             {
                 playersArray = &it->second;
-            }
-            else
-            {
-                index++;
             }
         }
 
@@ -248,8 +243,6 @@ vector<Players2> generateLineupN(const vector<Player>& p, vector<string>& disall
                 }
                 filtedFlex.emplace(index, flexPlayers);
             }
-            //flexPlayers.insert(flexPlayers.end(), playersByPos[6].begin(), playersByPos[6].end());
-
         }
     }
 
