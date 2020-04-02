@@ -80,6 +80,8 @@ struct Players2 {
     {
         posCounts.fill(0);
     }
+    static constexpr bool isRBPos(int pos) { return pos == 1 || pos == 2; }
+    static constexpr bool isWRPos(int pos) { return pos == 3 || pos == 4 || pos == 5; }
 };
 
 
