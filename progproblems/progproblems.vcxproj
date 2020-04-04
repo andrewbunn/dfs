@@ -143,7 +143,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
-      <DebugInformationFormat>None</DebugInformationFormat>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <EnableParallelCodeGeneration>false</EnableParallelCodeGeneration>
@@ -179,6 +179,8 @@
     <ClCompile Include="Players2.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="avx_mathfun.h" />
+    <ClInclude Include="lcg.h" />
     <ClInclude Include="parsing.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="Players.h" />

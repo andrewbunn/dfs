@@ -2,18 +2,18 @@
 #include <immintrin.h>
 
 bool operator==(const Players2& first, const Players2& other) {
-    return (first.bits == other.bits);
+    return (first.set == other.set);
 }
 
 bool operator!=(const Players2& first, const Players2& other) {
-    return (first.bits != other.bits);
+    return (first.set != other.set);
 }
 
 bool operator<(const Players2& lhs, const Players2& rhs)
 {
-    if (lhs.value != rhs.value)
+    //if (lhs.value != rhs.value)
         return lhs.value > rhs.value;
-    return lhs.bits > rhs.bits;
+    //return lhs.bits > rhs.bits;
 }
 
 bool operator==(const array<uint64_t, 2>& first, const array<uint64_t, 2>& other) {

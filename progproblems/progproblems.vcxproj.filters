@@ -38,5 +38,11 @@
     <ClInclude Include="server.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="lcg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="avx_mathfun.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

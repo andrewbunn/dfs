@@ -123,13 +123,14 @@ vector<vector<string>> parseLineupSet(const string filename)
 }
 
 // for now just parse player names like output.csv current does, could make format easier to parse
-vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices)
+vector<lineup_t> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices)
 {
-    vector<vector<uint8_t>> result;
+    vector<lineup_t> result;
     ifstream       file(filename);
     vector<string> tokens = getNextLineAndSplitIntoTokens(file);
-    vector<uint8_t> current;
+    lineup_t current;
 
+    int c = 0;
     while (tokens.size() == 1)
     {
         if (tokens[0].size() > 0)
@@ -139,7 +140,8 @@ vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string
                 auto it = playerIndices.find(tokens[0]);
                 if (it != playerIndices.end())
                 {
-                    current.push_back(it->second);
+                    //current.push_back(it->second);
+                    current[c++] = it->second;
                 }
                 else
                 {
@@ -151,10 +153,10 @@ vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string
             {
                 // value/cost number, signifies end of lineup.
                 // duration at start of file
-                if (current.size() > 0)
+                if (c > 0)
                 {
                     result.push_back(current);
-                    current.clear();
+                    c = 0;
                 }
             }
         }
@@ -182,12 +184,13 @@ void writeLineupsData(string filename, vector<Players2>& lineups)
 
         myfile << set2;
         myfile << ",";
-        for (auto x : lineup.posCounts)
+        //for (auto x : lineup.posCounts)
+        for (int i = 0; i < numPositions; i++)
         {
-            myfile << (int)x;
+            myfile << (int)lineup.getPosCount(i);
             myfile << ",";
         }
-        myfile << (int)lineup.totalCount;
+        myfile << (int)lineup.getTotalCount();
         myfile << ",";
         myfile << lineup.value;
         myfile << ",";
@@ -218,11 +221,13 @@ vector<Players2> parseLineupsData(string filename)
         b <<= 64;
         b |= set1;
         lineup.bits = b;
-        for (int x = 0; x < lineup.posCounts.size(); x++)
+        for (int x = 0; x < numPositions; x++)
         {
-            lineup.posCounts[x] = stoi(tokens[idx++]);
+            lineup.setPosCount(x, stoi(tokens[idx++]));
+            //lineup.posCounts[x] = stoi(tokens[idx++]);
         }
-        lineup.totalCount = stoi(tokens[idx++]);
+        //lineup.totalCount = stoi(tokens[idx++]);
+        idx++;
         lineup.value = stof(tokens[idx++]);
         lineup.hasFlex = stoi(tokens[idx++]) != 0;
         result.push_back(lineup);

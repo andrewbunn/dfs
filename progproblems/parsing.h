@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include "Player.h"
+#include "Players.h"
 #include <unordered_map>
 
 using namespace std;
@@ -17,7 +18,7 @@ vector<tuple<string, string, float>> parseCorr(string filename);
 vector<Player> parsePlayers(string filename);
 vector<vector<string>> parseLineupString(const string filename);
 vector<vector<string>> parseLineupSet(const string filename);
-vector<vector<uint8_t>> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices);
+vector<lineup_t> parseLineups(string filename, const unordered_map<string, uint8_t>& playerIndices);
 vector<Players2> parseLineupsData(string filename);
 void writeLineupsData(string filename, vector<Players2>& lineups);
 void normalizeName(string& name);
