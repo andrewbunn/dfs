@@ -1,4 +1,5 @@
 #pragma once
+#include "Player.h"
 #include <array>
 #include <bitset>
 #include <nmmintrin.h>
@@ -6,7 +7,6 @@
 #include <stdint.h>
 #include <unordered_map>
 #include <vector>
-#include "Player.h"
 
 // number of lineups to generate in optimizen - TODO make parameter
 #define LINEUPCOUNT 100000
@@ -29,7 +29,13 @@ constexpr int NumLineupSlots = 9;
 constexpr int numPositions = 5;
 
 constexpr int MaxPositionCount[numPositions] = {1, 3, 4, 2, 1};
-constexpr int PositionCount[numPositions] = {1, 2, 3, 1, 1};
+// diff has 3 states: negative, 0, or positive
+// (n + 1) >> 2
+// n > 2 -> 1
+// 0 1 2 0 0
+// 1 ->
+// n >> 1
+constexpr uint8_t PositionCount[numPositions] = {1, 2, 3, 1, 1};
 constexpr int slots[NumLineupSlots] = {0, 1, 1, 2, 2, 2, 3, 5 /*flex*/, 4};
 
 struct OptimizerLineup {
@@ -39,6 +45,7 @@ struct OptimizerLineup {
   }
   static constexpr bool isTEPos(int pos) { return pos == 6; }
   static constexpr bool isFlexPos(int pos) { return pos == 7; }
+  static constexpr bool isLastPos(int pos) { return pos == 8; }
   static constexpr int getFlexTransposeIndex(const int rbStartPos,
                                              const int wrStartPos,
                                              const int teStartPos) {
@@ -78,17 +85,15 @@ struct OptimizerLineup {
 
   bool operator==(const OptimizerLineup &other) { return bits == other.bits; }
 
-  inline bool tryAddPlayer(int pos, float proj, int index) {
+  inline bool tryAddPlayer(bool isFlex, int pos, float proj, int index) {
     const int posCount = getPosCount(pos);
     const int diff = posCount - PositionCount[pos];
     if (diff < 0) {
       return addPlayer(pos, posCount, proj, index);
     }
-
-    if (hasFlex || pos == 0 || pos == 4 || diff > 1) {
+    if (!isFlex || hasFlex || diff > 0) {
       return false;
     }
-
     const bool succeeded = addPlayer(pos, posCount, proj, index);
     hasFlex = succeeded;
     return succeeded;
@@ -99,10 +104,11 @@ private:
   static constexpr uint32_t bitMask_PosCount = (1 << numBits_PosCount) - 1;
   __attribute__((always_inline)) bool addPlayer(int pos, int posCount,
                                                 float proj, int index) {
+    // the check set should be unnecessary if not using skip pos
+    // but maybe covering a bug?
     if (!set[index]) {
       set[index] = true;
       setPosCount(pos, posCount + 1);
-      // posCounts[pos]++;
       value += proj;
       return true;
     }
@@ -148,7 +154,6 @@ struct IntHasher {
   }
 };
 
-
 class Optimizer {
 public:
   Optimizer() {}
@@ -177,5 +182,6 @@ private:
       const int wrStartPos, const int teStartPos,
       bitset<NumLineupSlots> skipPositionSet);
 
+  float _lastDelta;
   unordered_map<int, const vector<Player>, IntHasher> _filteredFlex;
 };

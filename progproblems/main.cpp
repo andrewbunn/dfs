@@ -37,36 +37,6 @@ constexpr uint64_t next_pow2(uint64_t x) {
 using namespace concurrency;
 using namespace std;
 
-void saveLineupList(vector<Player> &p, vector<OptimizerLineup> &lineups,
-                    string fileout, double msTime) {
-  ofstream myfile;
-  myfile.open(fileout);
-  myfile << msTime << " ms" << endl;
-
-  for (auto lineup : lineups) {
-    int totalcost = 0;
-    bitset<128> bitset = lineup.set;
-    int count = 0;
-    int totalCount = lineup.getTotalCount();
-    for (int i = 0; i < 128 && bitset.any() && count < totalCount; i++) {
-      if (bitset[i]) {
-        bitset[i] = false;
-        count++;
-        myfile << p[i].name;
-        totalcost += p[i].cost;
-        myfile << endl;
-      }
-    }
-
-    myfile << lineup.value;
-    myfile << endl;
-    myfile << totalcost;
-    myfile << endl;
-  }
-
-  myfile.close();
-}
-
 void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
   vector<Player> p = parsePlayers(filein);
   vector<string> startingPlayers = parseNames(lineupstart);
@@ -78,8 +48,10 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
     auto it = find_if(p.begin(), p.end(),
                       [&pl](const Player &p) { return pl == p.name; });
     if (it != p.end()) {
-      startingLineup.tryAddPlayer(it->pos, it->proj, it->index);
-      budgetUsed += it->cost;
+      // TODO do special calc for isflex
+      if (startingLineup.tryAddPlayer(false, it->pos, it->proj, it->index)) {
+        budgetUsed += it->cost;
+      }
     }
 
     // output which set we're processing
@@ -635,12 +607,10 @@ int selectorCore(const vector<Player> &p, const vector<lineup_t> &allLineups,
             runSimulationMaxWin_c(&standardNormals[0], results,
                                   currentLineupCount, target_lineup_count, p,
                                   &projs[0], &stdevs[0], corrPairs, corrCoeffs);
-        // results[it].ev = ev;
         lineup_set res;
         for (int i = 0; i < target_lineup_count; ++i) {
           res.set.push_back(results[it * target_lineup_count + i]);
         }
-        //(results[it]);
         res.ev = ev;
         return res;
       });
@@ -769,8 +739,8 @@ void greedyLineupSelector() {
 
         {
           Optimizer o;
-          vector<OptimizerLineup> lineups =
-              o.generateLineupN(p, playersToRemove, OptimizerLineup(), 0, msTime);
+          vector<OptimizerLineup> lineups = o.generateLineupN(
+              p, playersToRemove, OptimizerLineup(), 0, msTime);
           // faster to parse vector<Players2> to allLineups
           allLineups.clear();
           for (auto &lineup : lineups) {

@@ -738,3 +738,33 @@ unordered_map<string, float> parseYahooStats() {
   // cout << results.size() << endl;
   return results;
 }
+
+void saveLineupList(vector<Player> &p, vector<OptimizerLineup> &lineups,
+                    string fileout, double msTime) {
+  ofstream myfile;
+  myfile.open(fileout);
+  myfile << msTime << " ms" << endl;
+
+  for (auto lineup : lineups) {
+    int totalcost = 0;
+    bitset<128> bitset = lineup.set;
+    int count = 0;
+    int totalCount = lineup.getTotalCount();
+    for (int i = 0; i < 128 && bitset.any() && count < totalCount; i++) {
+      if (bitset[i]) {
+        bitset[i] = false;
+        count++;
+        myfile << p[i].name;
+        totalcost += p[i].cost;
+        myfile << endl;
+      }
+    }
+
+    myfile << lineup.value;
+    myfile << endl;
+    myfile << totalcost;
+    myfile << endl;
+  }
+
+  myfile.close();
+}

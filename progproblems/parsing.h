@@ -29,3 +29,5 @@ vector<string> parseRanks(string filename);
 void parseHistoricalProjFiles();
 unordered_map<string, float> parseProsStats();
 unordered_map<string, float> parseYahooStats();
+void saveLineupList(vector<Player>& p, vector<OptimizerLineup>& lineups,
+                    string fileout, double msTime);

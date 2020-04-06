@@ -1,7 +1,7 @@
 #include "Players.h"
 #include <chrono>
-#include <immintrin.h>
 #include <execution>
+#include <immintrin.h>
 
 static float _g_min_Players = 0.f;
 thread_local array<vector<OptimizerLineup>, NumLineupSlots> _depth_arrs{};
@@ -100,12 +100,17 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
     }
   }
 
+  if (OptimizerLineup::isLastPos(pos) &&
+      (oldLineup.value + _lastDelta < _g_min_Players)) {
+    return;
+  }
   for (int i = startPos; i < playersArray->size(); i++) {
     const Player &p = (*playersArray)[i];
     OptimizerLineup currentLineup = oldLineup;
     if (p.cost <= budget) {
-      if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index)) {
-        if (pos == 8) {
+      if (currentLineup.tryAddPlayer(OptimizerLineup::isFlexPos(pos), p.pos,
+                                     p.proj, p.index)) {
+        if (OptimizerLineup::isLastPos(pos)) {
           // this only stays sorted if defenses are sorted decreasing order
           bestLineups.push_back(currentLineup);
         } else {
@@ -116,6 +121,7 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
                               isTE ? i + 1 : teStartPos, skipPositionSet);
 
           vector<OptimizerLineup> &lineups = _depth_arrs[pos + 1];
+
           const auto filter = [&](const float min) {
             for (const auto &l : lineups) {
               if (l.value > min) {
@@ -129,6 +135,9 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
                 std::max<float>(bestLineups.back().value, _g_min_Players);
             filter(_g_min_Players);
           } else {
+            if (lineups.size() == 0)
+              continue;
+
             const float min = _g_min_Players;
             if (min < lineups.back().value) {
               bestLineups.insert(bestLineups.end(), lineups.begin(),
@@ -188,7 +197,7 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
   auto loop = [&](const Player &p) {
     OptimizerLineup currentLineup = oldLineup;
     if (p.cost <= budget) {
-      if (currentLineup.tryAddPlayer(p.pos, p.proj, p.index)) {
+      if (currentLineup.tryAddPlayer(false, p.pos, p.proj, p.index)) {
         /* 2 or 3? perf seems similar but 3 might be better with removed
          * players? */
         if (pos >= 2) {
@@ -318,6 +327,7 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
       }
     }
   }
+  _lastDelta = playersByPos[8][0].proj + .05f;
   _g_min_Players = 0.f;
   vector<OptimizerLineup> output =
       knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0,
