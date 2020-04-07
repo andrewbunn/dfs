@@ -114,6 +114,10 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
+    <PreBuildEvent>
+      <Command>
+      </Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -172,6 +176,9 @@
       <SubSystem>NotSet</SubSystem>
       <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>prebuild.exe parseconstants</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
@@ -183,6 +190,7 @@
   <ItemGroup>
     <ClInclude Include="avx_mathfun.h" />
     <ClInclude Include="lcg.h" />
+    <ClInclude Include="ParsedConstants.h" />
     <ClInclude Include="parsing.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="Optimizer.h" />

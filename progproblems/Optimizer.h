@@ -9,19 +9,14 @@
 #include <vector>
 
 // number of lineups to generate in optimizen - TODO make parameter
-#define LINEUPCOUNT 100000
+constexpr size_t LINEUPCOUNT = 100000;
 // number of simulations to run of a set of lineups to determine expected value
-#define SIMULATION_COUNT 25000
+constexpr size_t SIMULATION_COUNT = 25000;
 // number of lineups we want to select from total pool
-#define TARGET_LINEUP_COUNT 10 // 26
-// number of pools to generate
-#define NUM_ITERATIONS_OWNERSHIP 100
-#define STOCHASTIC_OPTIMIZER_RUNS 50
+constexpr size_t TARGET_LINEUP_COUNT = 10; // 26
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
-
-// using namespace std;
 
 enum Position { qb = 0, rb = 1, wr = 2, te = 3, def = 4 };
 
@@ -29,12 +24,6 @@ constexpr int NumLineupSlots = 9;
 constexpr int numPositions = 5;
 
 constexpr int MaxPositionCount[numPositions] = {1, 3, 4, 2, 1};
-// diff has 3 states: negative, 0, or positive
-// (n + 1) >> 2
-// n > 2 -> 1
-// 0 1 2 0 0
-// 1 ->
-// n >> 1
 constexpr uint8_t PositionCount[numPositions] = {1, 2, 3, 1, 1};
 constexpr int slots[NumLineupSlots] = {0, 1, 1, 2, 2, 2, 3, 5 /*flex*/, 4};
 
@@ -100,7 +89,7 @@ struct OptimizerLineup {
   }
 
 private:
-  static constexpr uint32_t numBits_PosCount = 3;
+  static constexpr uint32_t numBits_PosCount = 4;
   static constexpr uint32_t bitMask_PosCount = (1 << numBits_PosCount) - 1;
   __attribute__((always_inline)) bool addPlayer(int pos, int posCount,
                                                 float proj, int index) {
@@ -124,6 +113,32 @@ bool operator<(const OptimizerLineup &lhs, const OptimizerLineup &rhs);
 bool operator==(const std::array<uint64_t, 2> &first,
                 const std::array<uint64_t, 2> &other);
 
+struct BitsetIter {
+  union {
+    unsigned __int128 bits;
+    std::bitset<128> set;
+  };
+
+  BitsetIter(std::bitset<128> s) : set(s) {}
+
+  __attribute__((always_inline)) int next() {
+    unsigned __int128 bt = bits;
+    uint64_t b1 = bt;
+    int offset = 0;
+    if (!b1) {
+      bt >>= 64;
+      b1 = bt;
+      offset = 64;
+    }
+    auto ctz = __builtin_ctzll(b1);
+    int index = ctz + offset;
+    set[index] = false;
+    return index;
+  }
+
+  bool hasNext() { return set.any(); }
+};
+
 class set128_hash {
 public:
   std::size_t operator()(const std::array<uint64_t, 2> &bs) const {
@@ -131,7 +146,8 @@ public:
   }
 };
 
-using lineup_t = std::array<uint8_t, NumLineupSlots>;
+// using lineup_t = std::array<uint8_t, NumLineupSlots>;
+using lineup_t = std::array<uint32_t, NumLineupSlots>;
 
 struct lineup_set {
   std::vector<lineup_t> set;
@@ -181,6 +197,5 @@ private:
       const int wrStartPos, const int teStartPos,
       std::bitset<NumLineupSlots> skipPositionSet);
 
-  float _lastDelta;
   std::unordered_map<int, const std::vector<Player>, IntHasher> _filteredFlex;
 };

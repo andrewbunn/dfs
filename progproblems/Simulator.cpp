@@ -1,24 +1,42 @@
 #include "Simulator.h"
+#include "ParsedConstants.h"
+#include "Selector.h"
 #include <immintrin.h>
 using namespace std;
 
+float sum8(__m256 x) {
+  // hiQuad = ( x7, x6, x5, x4 )
+  const __m128 hiQuad = _mm256_extractf128_ps(x, 1);
+  // loQuad = ( x3, x2, x1, x0 )
+  const __m128 loQuad = _mm256_castps256_ps128(x);
+  // sumQuad = ( x3 + x7, x2 + x6, x1 + x5, x0 + x4 )
+  const __m128 sumQuad = _mm_add_ps(loQuad, hiQuad);
+  // loDual = ( -, -, x1 + x5, x0 + x4 )
+  const __m128 loDual = sumQuad;
+  // hiDual = ( -, -, x3 + x7, x2 + x6 )
+  const __m128 hiDual = _mm_movehl_ps(sumQuad, sumQuad);
+  // sumDual = ( -, -, x1 + x3 + x5 + x7, x0 + x2 + x4 + x6 )
+  const __m128 sumDual = _mm_add_ps(loDual, hiDual);
+  // lo = ( -, -, -, x0 + x2 + x4 + x6 )
+  const __m128 lo = sumDual;
+  // hi = ( -, -, -, x1 + x3 + x5 + x7 )
+  const __m128 hi = _mm_shuffle_ps(sumDual, sumDual, 0x1);
+  // sum = ( -, -, -, x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 )
+  const __m128 sum = _mm_add_ss(lo, hi);
+  return _mm_cvtss_f32(sum);
+}
+
 pair<float, int> Simulator::runSimulationMaxWin(
     const float *standardNormals, const lineup_t *lineups,
-    int currentLineupCount, int targetLineupCount,
-    const vector<Player> &allPlayers, const float *projs, const float *stdevs,
+    const int targetLineupCount, const float *projs, const float *stdevs,
     const vector<uint8_t> &corrPairs, const vector<float> &corrCoeffs) {
-  // evaluate multiple lineups at once, reduce number of calls to this fn
-  array<int, 64> winningThresholdsHit{0};
+  array<int, lineupChunkSize> winningThresholdsHit{0};
 
   for (int index = 0; index < SIMULATION_COUNT; index++) {
     const float *playerStandardNormals =
-        &standardNormals[allPlayers.size() * index];
+        &standardNormals[all_players_size * index];
     alignas(256) array<float, 128> playerScores;
 
-    const size_t all_players_size = 88; // constexpr parse from players file
-    // const size_t max = allPlayers.size();
-    // probably do loop iters to playerssize rounded up to mult of 8? or maybe
-    // keep 128 since unrolled
     for (int i = 0; i < all_players_size; i += 8) {
       auto vsd = _mm256_load_ps(reinterpret_cast<float const *>(stdevs + i));
       auto vsn = _mm256_loadu_ps(
@@ -28,7 +46,8 @@ pair<float, int> Simulator::runSimulationMaxWin(
     }
 
     for (int i = 1; i < corrPairs.size(); i += 2) {
-      float z1 = playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
+      const float z1 =
+          playerStandardNormals[corrPairs[i - 1]] * corrCoeffs[i - 1];
       playerScores[corrPairs[i]] =
           stdevs[i] *
           (playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1);
@@ -41,49 +60,32 @@ pair<float, int> Simulator::runSimulationMaxWin(
       _mm256_store_ps(reinterpret_cast<float *>(&playerScores[i]), vr);
     }
 
-    // if we pass all lineup sets here, have to eval them all efficiently in
-    // parallel? 64 lineup sets here, can scatter/gather from small arr to big
-    // arr real opt target here:
-    int c = 0;
-    // vgatherdps
-    // lineup needs to be bitmask of indices into playerScores
-    // then horizontal add
-    // _mm256_i32gather_ps (float const* base_addr, __m256i vindex, const int
-    // scale) _mm256_load_epi32 idx =
-    // _mm256_set_epi32(100,101,102,103,104,105,106,107); // if we want to load
-    // this, then lineup needs to be 256 wide or can set it from lineup somehow?
-    // _mm256_i32gather_ps (&playerScores[0], vindex, 4) scale bytes -> floats,
-    // could also do 8 to cover more area can only hold 8 :(((((
-    for (int i = 0; i < currentLineupCount; ++i) {
-      // auto& l = lineups[i];
+    const __m256i maskAll = _mm256_set1_epi32(0xFFFFFFFF);
+    for (int i = 0; i < lineupChunkSize; ++i) {
       int winnings = 0;
       for (int k = 0; k < targetLineupCount; k++) {
         auto &lineup = lineups[k + i * targetLineupCount];
-        float lineupScore = 0.f;
-        for (auto player : lineup) {
-          lineupScore += playerScores[player];
-        }
-        // only count > threshold
+
+        /*auto vindex = _mm256_set_epi32(lineup[0], lineup[1], lineup[2],
+           lineup[3], lineup[4], lineup[5], lineup[6], lineup[7]);*/
+        auto vindex = _mm256_maskload_epi32(
+            reinterpret_cast<int const *>(&lineup[0]), maskAll);
+        auto v = _mm256_i32gather_ps(&playerScores[0], vindex, 4);
+
+        float lineupScore = sum8(v) + playerScores[lineup[8]];
         if (lineupScore >= 170) {
           winnings = 1;
         }
       }
-      winningThresholdsHit[c++] += winnings;
+      winningThresholdsHit[i] += winnings;
     }
   }
-  int c = 0;
-  int imax = 0;
-  int wmax = 0;
-  for (auto w : winningThresholdsHit) {
-    if (w > wmax) {
-      wmax = w;
-      imax = c;
-    }
-    c++;
-  }
-  float expectedValue = (float)wmax / (float)SIMULATION_COUNT;
 
-  return {expectedValue, imax};
+  auto it =
+      max_element(winningThresholdsHit.begin(), winningThresholdsHit.end());
+  float expectedValue = (float)(*it) / (float)SIMULATION_COUNT;
+
+  return {expectedValue, distance(winningThresholdsHit.begin(), it)};
 }
 
 #define CONTENDED_PLACEMENT_SLOTS 14

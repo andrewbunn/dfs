@@ -1,4 +1,5 @@
 #include "Selector.h"
+#include "ParsedConstants.h"
 #include "Simulator.h"
 #include "lcg.h"
 #include "parsing.h"
@@ -7,8 +8,6 @@
 #include <random>
 
 using namespace std;
-
-constexpr int lineupChunkSize = 64;
 
 static void normaldistf_boxmuller_avx(float *data, size_t count,
                                       LCG<__m256> &r) {
@@ -29,11 +28,10 @@ static void normaldistf_boxmuller_avx(float *data, size_t count,
   }
 }
 
-vector<string>
-enforceOwnershipLimits(vector<Player> &p, array<int, 256> &playerCounts,
-                       vector<pair<uint8_t, float>> &ownershipLimits,
-                       int numLineups, uint64_t &disallowedSet1,
-                       uint64_t &disallowedSet2) {
+vector<string> enforceOwnershipLimits(
+    const vector<Player> &p, const array<int, 256> &playerCounts,
+    const vector<pair<uint8_t, float>> &ownershipLimits, int numLineups,
+    uint64_t &disallowedSet1, uint64_t &disallowedSet2) {
   vector<string> playersToRemove;
   for (auto &x : ownershipLimits) {
     float percentOwned = (float)playerCounts[x.first] / (float)numLineups;
@@ -50,9 +48,9 @@ enforceOwnershipLimits(vector<Player> &p, array<int, 256> &playerCounts,
     if (playerCounts[i]) {
       float percentOwned = (float)playerCounts[i] / (float)numLineups;
       if (percentOwned > 0.6 &&
-          find_if(ownershipLimits.begin(), ownershipLimits.end(),
-                  [i](pair<uint8_t, float> &z) { return z.first == i; }) ==
-              ownershipLimits.end()) {
+          find_if(ownershipLimits.begin(), ownershipLimits.end(), [i](auto &z) {
+            return z.first == i;
+          }) == ownershipLimits.end()) {
         if (i > 63) {
           disallowedSet2 |= (uint64_t)1 << (i - 64);
         } else {
@@ -65,8 +63,7 @@ enforceOwnershipLimits(vector<Player> &p, array<int, 256> &playerCounts,
   return playersToRemove;
 }
 
-int Selector::selectorCore(const vector<Player> &p,
-                           const vector<lineup_t> &allLineups,
+int Selector::selectorCore(const vector<lineup_t> &allLineups,
                            const vector<uint8_t> &corrPairs,
                            const vector<float> &corrCoeffs,
                            const array<float, 128> &projs,
@@ -90,10 +87,10 @@ int Selector::selectorCore(const vector<Player> &p,
   transform(
       execution::par, lineupChunkStarts.begin(), lineupChunkStarts.end(),
       chunkResults.begin(),
-      [&allLineups, &p, &bestset, &projs, &stdevs, &corrPairs, &corrCoeffs,
+      [&allLineups, &bestset, &projs, &stdevs, &corrPairs, &corrCoeffs,
        &allLineupCombinations, &target_lineup_count](int lineupChunkStart) {
         static thread_local size_t unaligned_alloc_size =
-            (size_t)p.size() * (size_t)SIMULATION_COUNT + 256;
+            (size_t)all_players_size * (size_t)SIMULATION_COUNT + 256;
         static thread_local unique_ptr<float[]> standardNormalsAlloc(
             new float[unaligned_alloc_size]);
         static thread_local size_t aligned_alloc_size =
@@ -105,9 +102,9 @@ int Selector::selectorCore(const vector<Player> &p,
                 128, 256, standardNormals_unaligned, aligned_alloc_size));
         static thread_local random_device rdev;
 
-        int currentLineupCount =
-            min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);
-        const size_t n = (size_t)p.size() * (size_t)SIMULATION_COUNT;
+        /*int currentLineupCount =
+            min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);*/
+        const size_t n = (size_t)all_players_size * (size_t)SIMULATION_COUNT;
         unsigned seed1 =
             std::chrono::system_clock::now().time_since_epoch().count();
         alignas(256) LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(),
@@ -116,7 +113,7 @@ int Selector::selectorCore(const vector<Player> &p,
         normaldistf_boxmuller_avx(&standardNormals[0], n, lcg);
 
         int indexBegin = lineupChunkStart;
-        int indexEnd = indexBegin + currentLineupCount;
+        int indexEnd = indexBegin + lineupChunkSize;
 
         lineup_t *results = &allLineupCombinations[lineupChunkStart];
         int k = 0;
@@ -131,9 +128,8 @@ int Selector::selectorCore(const vector<Player> &p,
         }
 
         auto [ev, it] = Simulator::runSimulationMaxWin(
-            &standardNormals[0], results, currentLineupCount,
-            target_lineup_count, p, &projs[0], &stdevs[0], corrPairs,
-            corrCoeffs);
+            &standardNormals[0], results, target_lineup_count, &projs[0],
+            &stdevs[0], corrPairs, corrCoeffs);
         lineup_set res;
         for (int i = 0; i < target_lineup_count; ++i) {
           res.set.push_back(results[it * target_lineup_count + i]);
@@ -149,8 +145,25 @@ int Selector::selectorCore(const vector<Player> &p,
   return distance(allLineups.begin(), itLineups);
 }
 
+// increase size to nearest multiple of 64 for clean loops in sim code.
+void padAllLineupsSize(vector<lineup_t> &allLineups) {
+  const size_t allLineupsSize = allLineups.size();
+  const size_t allLineupsSizeRounded =
+      ((allLineupsSize + (lineupChunkSize / 2)) / lineupChunkSize) *
+      lineupChunkSize;
+  constexpr unsigned int dead_index = all_players_size - 1;
+  constexpr lineup_t dead_lineup = {dead_index, dead_index, dead_index,
+                                    dead_index, dead_index, dead_index,
+                                    dead_index, dead_index, dead_index};
+  for (size_t i = allLineupsSize; i < allLineupsSizeRounded; ++i) {
+    // should be dead index from playersSize -> roundedPlayersSize
+    // won't work if playersSize is multiple of 8, will need to address later.
+    allLineups.push_back(dead_lineup);
+  }
+}
+
 void greedyLineupSelector() {
-  vector<Player> p = parsePlayers("players.csv");
+  const vector<Player> p = parsePlayers("players.csv");
   vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
   vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
@@ -161,9 +174,9 @@ void greedyLineupSelector() {
     // move those entries to the start of the array
     // only when we have the pair
     auto it = find_if(p.begin(), p.end(),
-                      [&s](Player &p) { return p.name == get<0>(s); });
+                      [&s](auto &p) { return p.name == get<0>(s); });
     auto itC = find_if(p.begin(), p.end(),
-                       [&s](Player &p) { return p.name == get<1>(s); });
+                       [&s](auto &p) { return p.name == get<1>(s); });
     if (it != p.end() && itC != p.end()) {
       float r = get<2>(s);
       float zr = sqrt(1 - r * r);
@@ -178,9 +191,9 @@ void greedyLineupSelector() {
   array<int, 256> playerCounts{};
 
   // vectorized projection and stddev data
-  alignas(256) array<float, 128> projs;
-  alignas(256) array<float, 128> stdevs;
-  for (auto &x : p) {
+  alignas(256) array<float, 128> projs{};
+  alignas(256) array<float, 128> stdevs{};
+  for (const auto &x : p) {
     playerIndices.emplace(x.name, x.index);
     projs[x.index] = (x.proj);
     stdevs[x.index] = (x.stdDev);
@@ -196,7 +209,7 @@ void greedyLineupSelector() {
 
   // unsigned seed1 =
   // std::chrono::system_clock::now().time_since_epoch().count();
-  auto start = chrono::steady_clock::now();
+  const auto start = chrono::steady_clock::now();
 
   vector<lineup_t> allLineups = parseLineups("output.csv", playerIndices);
 
@@ -213,22 +226,23 @@ void greedyLineupSelector() {
 
   // int z = 0;
   for (int i = 0; i < TARGET_LINEUP_COUNT; i++) {
+    padAllLineupsSize(allLineups);
     int lineupsIndexStart = 0;
     int lineupsIndexEnd = allLineups.size();
 
     bestsetIndex.push_back(Selector::selectorCore(
-        p, allLineups, corrPairs, corrCoeffs, projs, stdevs, lineupsIndexStart,
+        allLineups, corrPairs, corrCoeffs, projs, stdevs, lineupsIndexStart,
         lineupsIndexEnd, // request data
         bestset          // request data
         ));
 
-    auto end = chrono::steady_clock::now();
-    auto diff = end - start;
-    double msTime = chrono::duration<double, milli>(diff).count();
+    const auto end = chrono::steady_clock::now();
+    const auto diff = end - start;
+    const double msTime = chrono::duration<double, milli>(diff).count();
     cout << "Lineups: " << (i + 1) << " EV: " << bestset.ev
          << " elapsed time: " << msTime << endl;
 
-    for (auto &x : bestset.set[bestset.set.size() - 1]) {
+    for (const auto &x : bestset.set[bestset.set.size() - 1]) {
       cout << p[x].name;
       cout << ",";
     }
@@ -238,7 +252,7 @@ void greedyLineupSelector() {
     // rather than "enforced ownership" we should just have ownership caps
     // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and
     // work with new player set
-    for (auto x : bestset.set[bestset.set.size() - 1]) {
+    for (const auto x : bestset.set[bestset.set.size() - 1]) {
       playerCounts[x]++;
     }
 
@@ -256,8 +270,7 @@ void greedyLineupSelector() {
           cout << s << ",";
         }
         cout << endl;
-        // array<uint64_t, 2> disSets = { disallowedSet1 , disallowedSet2 };
-        // disallowedPlayersToLineupSet.emplace(disSets, allLineups);
+
         currentPlayersRemoved = playersToRemove;
         currentDisallowedSet1 = disallowedSet1;
         currentDisallowedSet2 = disallowedSet2;
@@ -272,15 +285,12 @@ void greedyLineupSelector() {
           for (auto &lineup : lineups) {
             int count = 0;
             lineup_t currentLineup;
-            bitset<128> bitset = lineup.set;
-            int totalCount = lineup.getTotalCount();
-            for (int i = 0;
-                 i < bitset.size() && bitset.any() && count < totalCount; i++) {
-              if (bitset[i]) {
-                currentLineup[count] = ((uint8_t)i);
-                count++;
-                bitset[i] = false;
-              }
+            BitsetIter bitset(lineup.set);
+            while (true) {
+              int i = bitset.next();
+              currentLineup[count] = ((uint8_t)i);
+              if (!bitset.hasNext()) break;
+              count++;
             }
             allLineups.push_back(currentLineup);
           }

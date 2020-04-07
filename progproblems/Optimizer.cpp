@@ -1,4 +1,5 @@
 #include "Optimizer.h"
+#include "ParsedConstants.h"
 #include <chrono>
 #include <execution>
 #include <immintrin.h>
@@ -102,7 +103,7 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
   }
 
   if (OptimizerLineup::isLastPos(pos) &&
-      (oldLineup.value + _lastDelta < _g_min_Players)) {
+      (oldLineup.value + last_highest_delta < _g_min_Players)) {
     return;
   }
   for (int i = startPos; i < playersArray->size(); i++) {
@@ -328,7 +329,6 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
       }
     }
   }
-  _lastDelta = playersByPos[8][0].proj + .05f;
   _g_min_Players = 0.f;
   vector<OptimizerLineup> output =
       knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0,

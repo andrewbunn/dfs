@@ -3,11 +3,12 @@
 #include "Player.h"
 #include <vector>
 
+constexpr int lineupChunkSize = 64;
+
 void greedyLineupSelector();
 class Selector {
 public:
-  static int selectorCore(const std::vector<Player> &p,
-                          const std::vector<lineup_t> &allLineups,
+  static int selectorCore(const std::vector<lineup_t> &allLineups,
                           const std::vector<uint8_t> &corrPairs,
                           const std::vector<float> &corrCoeffs,
                           const std::array<float, 128> &projs,

@@ -389,6 +389,26 @@ void evaluateScore(string filename) {
   }
 }
 
+void parseBuildConstants() {
+  const vector<Player> p = parsePlayers("players.csv");
+  const size_t allPlayersSize = p.size();
+  const size_t allPlayersSizeRounded = ((allPlayersSize + 4) / 8) * 8;
+
+  auto firstDef = find_if(p.begin(), p.end(),
+                          [](auto &pl) { return pl.pos == Position::def; });
+  const float firstDefenseProj = firstDef->proj + .05f;
+
+  cout << "Updating players size: " << allPlayersSizeRounded << endl;
+  ofstream myfile;
+  myfile.open("ParsedConstants.h");
+  myfile << "#pragma once" << endl;
+  myfile << "constexpr size_t all_players_size = " << allPlayersSizeRounded
+         << ";" << endl;
+  myfile << "constexpr float last_highest_delta = " << firstDefenseProj << ";"
+         << endl;
+  myfile.close();
+}
+
 int main(int argc, char *argv[]) {
   if (argc > 1) {
     if (strcmp(argv[1], "optimizen") == 0) {
@@ -463,6 +483,10 @@ int main(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "parsefpros") == 0) {
       parseProsStats();
+    }
+
+    if (strcmp(argv[1], "parseconstants") == 0) {
+      parseBuildConstants();
     }
   }
   return 0;
