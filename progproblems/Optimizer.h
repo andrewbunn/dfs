@@ -21,7 +21,7 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-using namespace std;
+// using namespace std;
 
 enum Position { qb = 0, rb = 1, wr = 2, te = 3, def = 4 };
 
@@ -121,25 +121,25 @@ static_assert(sizeof(OptimizerLineup) == 24, "Struct not properly packed.");
 bool operator==(const OptimizerLineup &first, const OptimizerLineup &other);
 bool operator!=(const OptimizerLineup &first, const OptimizerLineup &other);
 bool operator<(const OptimizerLineup &lhs, const OptimizerLineup &rhs);
-bool operator==(const array<uint64_t, 2> &first,
-                const array<uint64_t, 2> &other);
+bool operator==(const std::array<uint64_t, 2> &first,
+                const std::array<uint64_t, 2> &other);
 
 class set128_hash {
 public:
-  std::size_t operator()(const array<uint64_t, 2> &bs) const {
-    return hash<uint64_t>()(bs[0]) ^ hash<uint64_t>()(bs[1]);
+  std::size_t operator()(const std::array<uint64_t, 2> &bs) const {
+    return std::hash<uint64_t>()(bs[0]) ^ std::hash<uint64_t>()(bs[1]);
   }
 };
 
 using lineup_t = std::array<uint8_t, NumLineupSlots>;
 
 struct lineup_set {
-  vector<lineup_t> set;
+  std::vector<lineup_t> set;
   float ev;
   float stdev;
   float getSharpe() { return (ev - (10 * set.size())) / stdev; }
   lineup_set() : ev(0.f), stdev(1.f) {}
-  lineup_set(vector<lineup_t> &s) : set(s), ev(0.f), stdev(1.f) {}
+  lineup_set(std::vector<lineup_t> &s) : set(s), ev(0.f), stdev(1.f) {}
 };
 
 bool operator<(const lineup_set &lhs, const lineup_set &rhs);
@@ -157,31 +157,30 @@ struct IntHasher {
 class Optimizer {
 public:
   Optimizer() {}
-  vector<OptimizerLineup> generateLineupN(const vector<Player> &p,
-                                          vector<string> &disallowedPlayers,
-                                          OptimizerLineup currentPlayers,
-                                          int budgetUsed, double &msTime);
+  std::vector<OptimizerLineup> generateLineupN(
+      const std::vector<Player> &p, std::vector<std::string> &disallowedPlayers,
+      OptimizerLineup currentPlayers, int budgetUsed, double &msTime);
 
 private:
-  vector<OptimizerLineup> knapsackPositionsN(
+  std::vector<OptimizerLineup> knapsackPositionsN(
       const int budget, const int pos, const OptimizerLineup oldLineup,
-      const vector<vector<Player>> &players, const int rbStartPos,
+      const std::vector<std::vector<Player>> &players, const int rbStartPos,
       const int wrStartPos, const int teStartPos,
       std::bitset<NumLineupSlots> skipPositionSet);
 
   void knapsackPositionsN3(const int budget, const int pos,
                            const OptimizerLineup oldLineup,
-                           const vector<vector<Player>> &players,
+                           const std::vector<std::vector<Player>> &players,
                            const int rbStartPos, const int wrStartPos,
                            const int teStartPos,
                            std::bitset<NumLineupSlots> skipPositionSet);
 
   __attribute__((noinline)) bool knapsack_helperSkipPosition(
       const int budget, const int pos, const OptimizerLineup oldLineup,
-      const vector<vector<Player>> &players, const int rbStartPos,
+      const std::vector<std::vector<Player>> &players, const int rbStartPos,
       const int wrStartPos, const int teStartPos,
-      bitset<NumLineupSlots> skipPositionSet);
+      std::bitset<NumLineupSlots> skipPositionSet);
 
   float _lastDelta;
-  unordered_map<int, const vector<Player>, IntHasher> _filteredFlex;
+  std::unordered_map<int, const std::vector<Player>, IntHasher> _filteredFlex;
 };

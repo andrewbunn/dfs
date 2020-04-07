@@ -176,15 +176,18 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="parsing.cpp" />
-    <ClCompile Include="Players2.cpp" />
+    <ClCompile Include="Optimizer.cpp" />
+    <ClCompile Include="Selector.cpp" />
+    <ClCompile Include="Simulator.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="avx_mathfun.h" />
     <ClInclude Include="lcg.h" />
     <ClInclude Include="parsing.h" />
     <ClInclude Include="Player.h" />
-    <ClInclude Include="Players.h" />
-    <ClInclude Include="server.h" />
+    <ClInclude Include="Optimizer.h" />
+    <ClInclude Include="Selector.h" />
+    <ClInclude Include="Simulator.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

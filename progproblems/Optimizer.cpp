@@ -1,8 +1,9 @@
-#include "Players.h"
+#include "Optimizer.h"
 #include <chrono>
 #include <execution>
 #include <immintrin.h>
 
+using namespace std;
 static float _g_min_Players = 0.f;
 thread_local array<vector<OptimizerLineup>, NumLineupSlots> _depth_arrs{};
 
@@ -18,8 +19,8 @@ bool operator<(const OptimizerLineup &lhs, const OptimizerLineup &rhs) {
   return lhs.value > rhs.value;
 }
 
-bool operator==(const array<uint64_t, 2> &first,
-                const array<uint64_t, 2> &other) {
+bool operator==(const std::array<uint64_t, 2> &first,
+                const std::array<uint64_t, 2> &other) {
   return (first[0] == other[0]) && (first[1] == other[1]);
 }
 
