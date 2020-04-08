@@ -3,27 +3,10 @@
 #include "Player.h"
 #include "Selector.h"
 #include "parsing.h"
-#include "test.h"
-#include <algorithm>
-#include <array>
-#include <bitset>
-#include <cassert>
-#include <chrono>
-#include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <execution>
 #include <fstream>
-#include <functional>
 #include <iostream>
-#include <list>
-#include <numeric>
-#include <random>
-#include <sstream>
-#include <stdexcept>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 using namespace std;
