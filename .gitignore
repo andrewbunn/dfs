@@ -27,7 +27,7 @@ progproblems/Release/*
 progproblems/x64/*
 GeneratePlayerData/GeneratePlayerData/bin/*
 progproblems/*.user
-
+playertargets.txt
 
 # OS gen #
 .DS_Store
