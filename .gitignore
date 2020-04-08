@@ -11,22 +11,22 @@
 *.opendb
 *.vc.db
 
-# csv in progproblems #
-progproblems/*.csv
-!progproblems/corr.csv
-!progproblems/ownership.csv
-!progproblems/players.csv
-!progproblems/output.csv
+# csv in src #
+src/*.csv
+!src/corr.csv
+!src/ownership.csv
+!src/players.csv
+!src/output.csv
 
 Release/*
 Debug/*
 x64/*
 .vs/*
-progproblems/Debug/*
-progproblems/Release/*
-progproblems/x64/*
+src/Debug/*
+src/Release/*
+src/x64/*
 GeneratePlayerData/GeneratePlayerData/bin/*
-progproblems/*.user
+src/*.user
 *.txt
 
 # OS gen #
