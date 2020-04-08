@@ -28,19 +28,16 @@ static void normaldistf_boxmuller_avx(float *data, size_t count,
   }
 }
 
-vector<string> enforceOwnershipLimits(
-    const vector<Player> &p, const array<int, 256> &playerCounts,
-    const vector<pair<uint8_t, float>> &ownershipLimits, int numLineups,
-    uint64_t &disallowedSet1, uint64_t &disallowedSet2) {
+vector<string>
+enforceOwnershipLimits(const vector<Player> &p,
+                       const array<int, 256> &playerCounts,
+                       const vector<pair<uint8_t, float>> &ownershipLimits,
+                       int numLineups, bitset<128> &disallowedSet) {
   vector<string> playersToRemove;
   for (auto &x : ownershipLimits) {
     float percentOwned = (float)playerCounts[x.first] / (float)numLineups;
     if (percentOwned >= x.second) {
-      if (x.first > 63) {
-        disallowedSet2 |= (uint64_t)1 << (x.first - 64);
-      } else {
-        disallowedSet1 |= (uint64_t)1 << x.first;
-      }
+      disallowedSet[x.first] = true;
       playersToRemove.push_back(p[x.first].name);
     }
   }
@@ -51,11 +48,7 @@ vector<string> enforceOwnershipLimits(
           find_if(ownershipLimits.begin(), ownershipLimits.end(), [i](auto &z) {
             return z.first == i;
           }) == ownershipLimits.end()) {
-        if (i > 63) {
-          disallowedSet2 |= (uint64_t)1 << (i - 64);
-        } else {
-          disallowedSet1 |= (uint64_t)1 << i;
-        }
+        disallowedSet[i] = true;
         playersToRemove.push_back(p[i].name);
       }
     }
@@ -149,7 +142,7 @@ int Selector::selectorCore(const vector<lineup_t> &allLineups,
 void padAllLineupsSize(vector<lineup_t> &allLineups) {
   const size_t allLineupsSize = allLineups.size();
   const size_t allLineupsSizeRounded =
-      ((allLineupsSize + (lineupChunkSize / 2)) / lineupChunkSize) *
+      ((allLineupsSize + lineupChunkSize - 1) / lineupChunkSize) *
       lineupChunkSize;
   constexpr unsigned int dead_index = all_players_size - 1;
   constexpr lineup_t dead_lineup = {dead_index, dead_index, dead_index,
@@ -213,8 +206,7 @@ void greedyLineupSelector() {
 
   vector<lineup_t> allLineups = parseLineups("output.csv", playerIndices);
 
-  uint64_t currentDisallowedSet1 = 0;
-  uint64_t currentDisallowedSet2 = 0;
+  bitset<128> currentDisallowedSet = 0;
   vector<string> currentPlayersRemoved;
 
   // choose lineup that maximizes objective
@@ -257,14 +249,11 @@ void greedyLineupSelector() {
     }
 
     if ((i > 1) && (i % 2 == 0) && ((i + 1) < TARGET_LINEUP_COUNT)) {
-      uint64_t disallowedSet1 = 0;
-      uint64_t disallowedSet2 = 0;
+      bitset<128> disallowedSet = 0;
       vector<string> playersToRemove = enforceOwnershipLimits(
-          p, playerCounts, ownershipLimits, bestset.set.size(), disallowedSet1,
-          disallowedSet2);
+          p, playerCounts, ownershipLimits, bestset.set.size(), disallowedSet);
 
-      if (disallowedSet1 != currentDisallowedSet1 ||
-          disallowedSet2 != currentDisallowedSet2) {
+      if (disallowedSet != currentDisallowedSet) {
         cout << "Removing players: ";
         for (auto &s : playersToRemove) {
           cout << s << ",";
@@ -272,8 +261,7 @@ void greedyLineupSelector() {
         cout << endl;
 
         currentPlayersRemoved = playersToRemove;
-        currentDisallowedSet1 = disallowedSet1;
-        currentDisallowedSet2 = disallowedSet2;
+        currentDisallowedSet = disallowedSet;
         double msTime = 0;
 
         {
@@ -289,7 +277,8 @@ void greedyLineupSelector() {
             while (true) {
               int i = bitset.next();
               currentLineup[count] = ((uint8_t)i);
-              if (!bitset.hasNext()) break;
+              if (!bitset.hasNext())
+                break;
               count++;
             }
             allLineups.push_back(currentLineup);

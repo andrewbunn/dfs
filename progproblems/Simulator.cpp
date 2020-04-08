@@ -26,6 +26,14 @@ float sum8(__m256 x) {
   return _mm_cvtss_f32(sum);
 }
 
+float sum8_v2(__m256 x) {
+  __m256 t1 = _mm256_hadd_ps(x, x);
+  __m256 t2 = _mm256_hadd_ps(t1, t1);
+  __m128 t3 = _mm256_extractf128_ps(t2, 1);
+  __m128 t4 = _mm_add_ss(_mm256_castps256_ps128(t2), t3);
+  return _mm_cvtss_f32(t4);
+}
+
 pair<float, int> Simulator::runSimulationMaxWin(
     const float *standardNormals, const lineup_t *lineups,
     const int targetLineupCount, const float *projs, const float *stdevs,

@@ -27,6 +27,9 @@ constexpr int MaxPositionCount[numPositions] = {1, 3, 4, 2, 1};
 constexpr uint8_t PositionCount[numPositions] = {1, 2, 3, 1, 1};
 constexpr int slots[NumLineupSlots] = {0, 1, 1, 2, 2, 2, 3, 5 /*flex*/, 4};
 
+void runPlayerOptimizerN(std::string filein, std::string fileout,
+                         std::string lineupstart);
+
 struct OptimizerLineup {
   static constexpr bool isRBPos(int pos) { return pos == 1 || pos == 2; }
   static constexpr bool isWRPos(int pos) {

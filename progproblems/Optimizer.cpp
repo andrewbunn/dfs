@@ -1,5 +1,6 @@
 #include "Optimizer.h"
 #include "ParsedConstants.h"
+#include "parsing.h"
 #include <chrono>
 #include <execution>
 #include <immintrin.h>
@@ -7,6 +8,35 @@
 using namespace std;
 static float _g_min_Players = 0.f;
 thread_local array<vector<OptimizerLineup>, NumLineupSlots> _depth_arrs{};
+
+void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
+  vector<Player> p = parsePlayers(filein);
+  vector<string> startingPlayers = parseNames(lineupstart);
+
+  OptimizerLineup startingLineup;
+  // if we can't add player, go to next round
+  int budgetUsed = 0;
+  for (auto &pl : startingPlayers) {
+    auto it = find_if(p.begin(), p.end(),
+                      [&pl](const Player &p) { return pl == p.name; });
+    if (it != p.end()) {
+      // TODO do special calc for isflex
+      if (startingLineup.tryAddPlayer(false, it->pos, it->proj, it->index)) {
+        budgetUsed += it->cost;
+      }
+    }
+
+    // output which set we're processing
+    cout << pl << ",";
+  }
+
+  double msTime = 0;
+  vector<string> empty;
+  Optimizer o;
+  vector<OptimizerLineup> lineups =
+      o.generateLineupN(p, empty, startingLineup, budgetUsed, msTime);
+  saveLineupList(p, lineups, fileout, msTime);
+}
 
 bool operator==(const OptimizerLineup &first, const OptimizerLineup &other) {
   return (first.set == other.set);

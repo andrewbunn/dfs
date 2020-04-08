@@ -3,7 +3,7 @@
 #include "Player.h"
 #include <vector>
 
-constexpr int lineupChunkSize = 64;
+constexpr int lineupChunkSize = 128;
 
 void greedyLineupSelector();
 class Selector {
