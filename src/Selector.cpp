@@ -1,9 +1,9 @@
 #include "Selector.h"
-#include "ScopedElapsedTime.h"
 #include "ParsedConstants.h"
+#include "ScopedElapsedTime.h"
 #include "Simulator.h"
-#include "parsing.h"
 #include "lcg.h"
+#include "parsing.h"
 #include <algorithm>
 #include <execution>
 #include <random>
@@ -46,7 +46,7 @@ void Simulator::normaldistf_boxmuller_avx(float *data, size_t count,
   const __m256 minustwo = _mm256_set1_ps(-2.0f);
 
   for (size_t i = 0; i < count; i += 16) {
-    __m256 u1 = _mm256_sub_ps(one, r());  // [0, 1) -> (0, 1]
+    __m256 u1 = _mm256_sub_ps(one, r()); // [0, 1) -> (0, 1]
     __m256 u2 = r();
     __m256 radius = _mm256_sqrt_ps(_mm256_mul_ps(minustwo, log256_ps(u1)));
     __m256 theta = _mm256_mul_ps(twopi, u2);
@@ -225,9 +225,8 @@ void greedyLineupSelector() {
       cout << endl;
       cout << endl;
 
-      // rather than "enforced ownership" we should just have ownership caps
-      // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen,
-      // and work with new player set
+      // reduce correlation between lineups by finding optimized lineups without
+      // currently highly-owned players
       for (const auto x : bestset.set[bestset.set.size() - 1]) {
         playerCounts[x]++;
       }
@@ -252,7 +251,6 @@ void greedyLineupSelector() {
             Optimizer o;
             vector<OptimizerLineup> lineups =
                 o.generateLineupN(p, playersToRemove, OptimizerLineup(), 0);
-            // faster to parse vector<Players2> to allLineups
             allLineups.clear();
             for (auto &lineup : lineups) {
               int count = 0;
@@ -261,7 +259,8 @@ void greedyLineupSelector() {
               while (true) {
                 int i = bitset.next();
                 currentLineup[count] = ((uint8_t)i);
-                if (!bitset.hasNext()) break;
+                if (!bitset.hasNext())
+                  break;
                 count++;
               }
               allLineups.push_back(currentLineup);

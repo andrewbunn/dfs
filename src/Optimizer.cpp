@@ -335,7 +335,7 @@ __attribute__((noinline)) bool Optimizer::knapsack_helperSkipPosition(
     bitset<NumLineupSlots> skipPositionSet) {
   if (skipPositionSet.test(pos)) {
     skipPositionSet.set(pos, false);
-    if (pos >= 8) {
+    if (OptimizerLineup::isLastPos(pos)) {
       _depth_arrs[8].push_back(oldLineup);
       return true;
     }

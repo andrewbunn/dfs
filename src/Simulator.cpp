@@ -4,6 +4,7 @@
 #include <immintrin.h>
 using namespace std;
 
+// 128 hadd more efficient than 256
 float sum8(__m256 x) {
   const __m128 hiQuad = _mm256_extractf128_ps(x, 1);
   const __m128 loQuad = _mm256_castps256_ps128(x);
@@ -78,44 +79,4 @@ pair<float, int> Simulator::runSimulationMaxWin(
   const float expectedValue = (float)(*it) / (float)SIMULATION_COUNT;
 
   return {expectedValue, distance(winningThresholdsHit.begin(), it)};
-}
-
-#define CONTENDED_PLACEMENT_SLOTS 14
-
-// cutoffs is sorted array of the average score for each prize cutoff
-// alternatively we can do regression to have function of value -> winnings
-inline float determineWinnings(float score,
-                               array<
-                                   uint8_t, CONTENDED_PLACEMENT_SLOTS> &placements /*, vector<float>& winningsCutoffs, vector<float>& winningsValues*/) {
-  static array<int, 22> winnings = {
-      10000, 5000, 3000, 2000, 1000, 750, 500, 400, 300, 200, 150,
-      100,   75,   60,   50,   45,   40,  35,  30,  25,  20,  15};
-
-  static array<float, 22> cutoffs = {
-      181.14, 179.58, 173.4,  172.8,  171.14, 168.7,  167,    165.1,
-      162.78, 160,    158.68, 156.3,  154.2,  151.64, 149.94, 147.18,
-      142.4,  138.18, 135.1,  130.24, 126.34, 121.3};
-  // number of top level placements we can have in each slot
-  static array<uint8_t, CONTENDED_PLACEMENT_SLOTS> slotsAvailable = {
-      1, 1, 1, 1, 1, 5, 5, 5, 10, 10, 10, 25, 25, 50};
-
-  // binary search array of cutoffs
-  auto it =
-      lower_bound(cutoffs.begin(), cutoffs.end(), score, greater<float>());
-  float value;
-  if (it != cutoffs.end()) {
-    if (it - cutoffs.begin() < CONTENDED_PLACEMENT_SLOTS) {
-      // we have 50 slots available so as long as lineupset coun t doesnt
-      // increase this can't overflow. still almost impossible
-      while (placements[it - cutoffs.begin()] ==
-             slotsAvailable[it - cutoffs.begin()]) {
-        it++;
-      }
-      placements[it - cutoffs.begin()]++;
-    }
-    value = static_cast<float>(winnings[it - cutoffs.begin()]);
-  } else {
-    value = 0;
-  }
-  return value;
 }
