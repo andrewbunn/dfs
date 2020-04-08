@@ -1,3 +1,4 @@
+#pragma once
 /*
    AVX implementation of sin, cos, sincos, exp and log
 
@@ -28,7 +29,6 @@
 
   (this is the zlib license)
 */
-
 #include <immintrin.h>
 
 /* yes I know, the top of this file is quite ugly */

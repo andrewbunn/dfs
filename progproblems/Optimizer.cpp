@@ -1,5 +1,6 @@
 #include "Optimizer.h"
 #include "ParsedConstants.h"
+#include "ScopedElapsedTime.h"
 #include "parsing.h"
 #include <chrono>
 #include <execution>
@@ -30,12 +31,15 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
     cout << pl << ",";
   }
 
-  double msTime = 0;
-  vector<string> empty;
-  Optimizer o;
-  vector<OptimizerLineup> lineups =
-      o.generateLineupN(p, empty, startingLineup, budgetUsed, msTime);
-  saveLineupList(p, lineups, fileout, msTime);
+  {
+    ScopedElapsedTime optimizerTime;
+    vector<string> empty;
+    Optimizer o;
+    vector<OptimizerLineup> lineups =
+        o.generateLineupN(p, empty, startingLineup, budgetUsed);
+    auto msTime = optimizerTime.getElapsedTime();
+    saveLineupList(p, lineups, fileout, msTime);
+  }
 }
 
 bool operator==(const OptimizerLineup &first, const OptimizerLineup &other) {
@@ -136,6 +140,7 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
       (oldLineup.value + last_highest_delta < _g_min_Players)) {
     return;
   }
+
   for (int i = startPos; i < playersArray->size(); i++) {
     const Player &p = (*playersArray)[i];
     OptimizerLineup currentLineup = oldLineup;
@@ -279,10 +284,50 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
   return merged;
 }
 
+bitset<NumLineupSlots>
+getSkipPositionsSet(const OptimizerLineup currentPlayers) {
+  bitset<NumLineupSlots> skipPositionsSet;
+  if (currentPlayers.getTotalCount() > 0) {
+    for (int i = 0; i < numPositions; i++) {
+      int count = currentPlayers.getPosCount(i);
+      if (count > 0) {
+        if (i == 0) {
+          skipPositionsSet.set(i);
+        } else if (i == 1) {
+          skipPositionsSet.set(i);
+          if (count > 1) {
+            skipPositionsSet.set(2);
+            if (count > 2) {
+              // flex
+              skipPositionsSet.set(7);
+            }
+          }
+        } else if (i == 2) {
+          skipPositionsSet.set(3);
+          if (count > 1) {
+            skipPositionsSet.set(4);
+            if (count > 2) {
+              skipPositionsSet.set(5);
+              if (count > 3) {
+                skipPositionsSet.set(7);
+              }
+            }
+          }
+        } else if (i == 3) {
+          skipPositionsSet.set(6);
+          // 2 te?
+        } else if (i == 4) {
+          skipPositionsSet.set(8);
+        }
+      }
+    }
+  }
+  return skipPositionsSet;
+}
+
 vector<OptimizerLineup> Optimizer::generateLineupN(
-    const vector<Player> &p, vector<string> &disallowedPlayers,
-    OptimizerLineup currentPlayers, int budgetUsed, double &msTime) {
-  auto start = chrono::steady_clock::now();
+    const vector<Player> &p, const vector<string> &disallowedPlayers,
+    const OptimizerLineup currentPlayers, const int budgetUsed) {
   vector<vector<Player>> playersByPos(NumLineupSlots);
   for (int i = 0; i < NumLineupSlots; i++) {
     for (auto &pl : p) {
@@ -322,50 +367,11 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
     }
   }
 
-  // skip positions
-  bitset<NumLineupSlots> skipPositionsSet;
-  if (currentPlayers.getTotalCount() > 0) {
-    for (int i = 0; i < numPositions; i++) {
-      int count = currentPlayers.getPosCount(i);
-      if (count > 0) {
-        if (i == 0) {
-          skipPositionsSet.set(i);
-        } else if (i == 1) {
-          skipPositionsSet.set(i);
-          if (count > 1) {
-            skipPositionsSet.set(2);
-            if (count > 2) {
-              // flex
-              skipPositionsSet.set(7);
-            }
-          }
-        } else if (i == 2) {
-          skipPositionsSet.set(3);
-          if (count > 1) {
-            skipPositionsSet.set(4);
-            if (count > 2) {
-              skipPositionsSet.set(5);
-              if (count > 3) {
-                skipPositionsSet.set(7);
-              }
-            }
-          }
-        } else if (i == 3) {
-          skipPositionsSet.set(6);
-          // 2 te?
-        } else if (i == 4) {
-          skipPositionsSet.set(8);
-        }
-      }
-    }
-  }
+  bitset<NumLineupSlots> skipPositionsSet = getSkipPositionsSet(currentPlayers);
+
   _g_min_Players = 0.f;
   vector<OptimizerLineup> output =
       knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0,
                          0, 0, skipPositionsSet);
-
-  auto end = chrono::steady_clock::now();
-  auto diff = end - start;
-  msTime = chrono::duration<double, milli>(diff).count();
   return output;
 }

@@ -184,6 +184,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="parsing.cpp" />
     <ClCompile Include="Optimizer.cpp" />
+    <ClCompile Include="ScopedElapsedTime.cpp" />
     <ClCompile Include="Selector.cpp" />
     <ClCompile Include="Simulator.cpp" />
   </ItemGroup>
@@ -194,6 +195,7 @@
     <ClInclude Include="parsing.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="Optimizer.h" />
+    <ClInclude Include="ScopedElapsedTime.h" />
     <ClInclude Include="Selector.h" />
     <ClInclude Include="Simulator.h" />
   </ItemGroup>

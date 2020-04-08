@@ -30,6 +30,9 @@
     <ClCompile Include="Selector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ScopedElapsedTime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="parsing.h">
@@ -54,6 +57,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ParsedConstants.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ScopedElapsedTime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

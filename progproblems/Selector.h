@@ -13,8 +13,6 @@ public:
                           const std::vector<float> &corrCoeffs,
                           const std::array<float, 128> &projs,
                           const std::array<float, 128> &stdevs,
-                          int lineupsIndexStart,
-                          int lineupsIndexEnd, // request data
-                          lineup_set &bestset  // request data
-  );
+                          const int lineupsIndexStart,
+                          const int lineupsIndexEnd, lineup_set &bestset);
 };

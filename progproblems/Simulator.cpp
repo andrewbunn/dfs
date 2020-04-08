@@ -5,47 +5,32 @@
 using namespace std;
 
 float sum8(__m256 x) {
-  // hiQuad = ( x7, x6, x5, x4 )
   const __m128 hiQuad = _mm256_extractf128_ps(x, 1);
-  // loQuad = ( x3, x2, x1, x0 )
   const __m128 loQuad = _mm256_castps256_ps128(x);
-  // sumQuad = ( x3 + x7, x2 + x6, x1 + x5, x0 + x4 )
   const __m128 sumQuad = _mm_add_ps(loQuad, hiQuad);
-  // loDual = ( -, -, x1 + x5, x0 + x4 )
   const __m128 loDual = sumQuad;
-  // hiDual = ( -, -, x3 + x7, x2 + x6 )
   const __m128 hiDual = _mm_movehl_ps(sumQuad, sumQuad);
-  // sumDual = ( -, -, x1 + x3 + x5 + x7, x0 + x2 + x4 + x6 )
   const __m128 sumDual = _mm_add_ps(loDual, hiDual);
-  // lo = ( -, -, -, x0 + x2 + x4 + x6 )
   const __m128 lo = sumDual;
-  // hi = ( -, -, -, x1 + x3 + x5 + x7 )
   const __m128 hi = _mm_shuffle_ps(sumDual, sumDual, 0x1);
-  // sum = ( -, -, -, x0 + x1 + x2 + x3 + x4 + x5 + x6 + x7 )
   const __m128 sum = _mm_add_ss(lo, hi);
   return _mm_cvtss_f32(sum);
-}
-
-float sum8_v2(__m256 x) {
-  __m256 t1 = _mm256_hadd_ps(x, x);
-  __m256 t2 = _mm256_hadd_ps(t1, t1);
-  __m128 t3 = _mm256_extractf128_ps(t2, 1);
-  __m128 t4 = _mm_add_ss(_mm256_castps256_ps128(t2), t3);
-  return _mm_cvtss_f32(t4);
 }
 
 pair<float, int> Simulator::runSimulationMaxWin(
     const float *standardNormals, const lineup_t *lineups,
     const int targetLineupCount, const float *projs, const float *stdevs,
     const vector<uint8_t> &corrPairs, const vector<float> &corrCoeffs) {
+  alignas(256) array<float, 128> playerScores;
   array<int, lineupChunkSize> winningThresholdsHit{0};
 
   for (int index = 0; index < SIMULATION_COUNT; index++) {
+    constexpr auto avx_width_bytes = 256 / 8;
+    constexpr auto floats_per_avx = avx_width_bytes / 4;
     const float *playerStandardNormals =
         &standardNormals[all_players_size * index];
-    alignas(256) array<float, 128> playerScores;
 
-    for (int i = 0; i < all_players_size; i += 8) {
+    for (int i = 0; i < all_players_size; i += floats_per_avx) {
       auto vsd = _mm256_load_ps(reinterpret_cast<float const *>(stdevs + i));
       auto vsn = _mm256_loadu_ps(
           reinterpret_cast<float const *>(playerStandardNormals + i));
@@ -61,7 +46,7 @@ pair<float, int> Simulator::runSimulationMaxWin(
           (playerStandardNormals[corrPairs[i]] * corrCoeffs[i] + z1);
     }
 
-    for (int i = 0; i < all_players_size; i += 8) {
+    for (int i = 0; i < all_players_size; i += floats_per_avx) {
       auto vpr = _mm256_load_ps(reinterpret_cast<float const *>(projs + i));
       auto vsc = _mm256_load_ps(reinterpret_cast<float *>(&playerScores[i]));
       auto vr = _mm256_add_ps(vpr, vsc);
@@ -74,24 +59,23 @@ pair<float, int> Simulator::runSimulationMaxWin(
       for (int k = 0; k < targetLineupCount; k++) {
         auto &lineup = lineups[k + i * targetLineupCount];
 
-        /*auto vindex = _mm256_set_epi32(lineup[0], lineup[1], lineup[2],
-           lineup[3], lineup[4], lineup[5], lineup[6], lineup[7]);*/
-        auto vindex = _mm256_maskload_epi32(
+        const auto vindex = _mm256_maskload_epi32(
             reinterpret_cast<int const *>(&lineup[0]), maskAll);
-        auto v = _mm256_i32gather_ps(&playerScores[0], vindex, 4);
+        const auto v = _mm256_i32gather_ps(&playerScores[0], vindex, 4);
 
-        float lineupScore = sum8(v) + playerScores[lineup[8]];
-        if (lineupScore >= 170) {
+        const float lineupScore = sum8(v) + playerScores[lineup[8]];
+        if (lineupScore >= SimulationTargetScore) {
           winnings = 1;
+          break;
         }
       }
       winningThresholdsHit[i] += winnings;
     }
   }
 
-  auto it =
+  const auto it =
       max_element(winningThresholdsHit.begin(), winningThresholdsHit.end());
-  float expectedValue = (float)(*it) / (float)SIMULATION_COUNT;
+  const float expectedValue = (float)(*it) / (float)SIMULATION_COUNT;
 
   return {expectedValue, distance(winningThresholdsHit.begin(), it)};
 }

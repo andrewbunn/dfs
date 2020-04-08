@@ -176,9 +176,10 @@ struct IntHasher {
 class Optimizer {
 public:
   Optimizer() {}
-  std::vector<OptimizerLineup> generateLineupN(
-      const std::vector<Player> &p, std::vector<std::string> &disallowedPlayers,
-      OptimizerLineup currentPlayers, int budgetUsed, double &msTime);
+  std::vector<OptimizerLineup>
+  generateLineupN(const std::vector<Player> &p,
+                  const std::vector<std::string> &disallowedPlayers,
+                  const OptimizerLineup currentPlayers, const int budgetUsed);
 
 private:
   std::vector<OptimizerLineup> knapsackPositionsN(

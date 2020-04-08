@@ -2,7 +2,6 @@
 #include "Optimizer.h"
 #include "Player.h"
 #include "Selector.h"
-#include "Simulator.h"
 #include "parsing.h"
 #include "test.h"
 #include <algorithm>

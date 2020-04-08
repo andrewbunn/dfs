@@ -1,32 +1,14 @@
 #include "Selector.h"
+#include "ScopedElapsedTime.h"
 #include "ParsedConstants.h"
 #include "Simulator.h"
-#include "lcg.h"
 #include "parsing.h"
+#include "lcg.h"
 #include <algorithm>
 #include <execution>
 #include <random>
 
 using namespace std;
-
-static void normaldistf_boxmuller_avx(float *data, size_t count,
-                                      LCG<__m256> &r) {
-  // assert(count % 16 == 0);
-  const __m256 twopi = _mm256_set1_ps(2.0f * 3.14159265358979323846f);
-  const __m256 one = _mm256_set1_ps(1.0f);
-  const __m256 minustwo = _mm256_set1_ps(-2.0f);
-
-  for (size_t i = 0; i < count; i += 16) {
-    __m256 u1 = _mm256_sub_ps(one, r()); // [0, 1) -> (0, 1]
-    __m256 u2 = r();
-    __m256 radius = _mm256_sqrt_ps(_mm256_mul_ps(minustwo, log256_ps(u1)));
-    __m256 theta = _mm256_mul_ps(twopi, u2);
-    __m256 sintheta, costheta;
-    sincos256_ps(theta, &sintheta, &costheta);
-    _mm256_store_ps(&data[i], _mm256_mul_ps(radius, costheta));
-    _mm256_store_ps(&data[i + 8], _mm256_mul_ps(radius, sintheta));
-  }
-}
 
 vector<string>
 enforceOwnershipLimits(const vector<Player> &p,
@@ -56,15 +38,32 @@ enforceOwnershipLimits(const vector<Player> &p,
   return playersToRemove;
 }
 
+void Simulator::normaldistf_boxmuller_avx(float *data, size_t count,
+                                          LCG<__m256> &r) {
+  // assert(count % 16 == 0);
+  const __m256 twopi = _mm256_set1_ps(2.0f * 3.14159265358979323846f);
+  const __m256 one = _mm256_set1_ps(1.0f);
+  const __m256 minustwo = _mm256_set1_ps(-2.0f);
+
+  for (size_t i = 0; i < count; i += 16) {
+    __m256 u1 = _mm256_sub_ps(one, r());  // [0, 1) -> (0, 1]
+    __m256 u2 = r();
+    __m256 radius = _mm256_sqrt_ps(_mm256_mul_ps(minustwo, log256_ps(u1)));
+    __m256 theta = _mm256_mul_ps(twopi, u2);
+    __m256 sintheta, costheta;
+    sincos256_ps(theta, &sintheta, &costheta);
+    _mm256_store_ps(&data[i], _mm256_mul_ps(radius, costheta));
+    _mm256_store_ps(&data[i + 8], _mm256_mul_ps(radius, sintheta));
+  }
+}
+
 int Selector::selectorCore(const vector<lineup_t> &allLineups,
                            const vector<uint8_t> &corrPairs,
                            const vector<float> &corrCoeffs,
                            const array<float, 128> &projs,
                            const array<float, 128> &stdevs,
-                           int lineupsIndexStart,
-                           int lineupsIndexEnd, // request data
-                           lineup_set &bestset  // request data
-) {
+                           const int lineupsIndexStart,
+                           const int lineupsIndexEnd, lineup_set &bestset) {
   bestset.ev = 0.f;
   vector<int> lineupChunkStarts;
   for (int j = lineupsIndexStart; j < lineupsIndexEnd; j += lineupChunkSize) {
@@ -72,7 +71,6 @@ int Selector::selectorCore(const vector<lineup_t> &allLineups,
   }
 
   // allocate giant vector of memory for all lineup variations
-  // lineupChunkStarts.size() * lineupChunkSize
   const size_t target_lineup_count = (1 + bestset.set.size());
   vector<lineup_t> allLineupCombinations(lineupChunkStarts.size() *
                                          lineupChunkSize * target_lineup_count);
@@ -95,22 +93,19 @@ int Selector::selectorCore(const vector<lineup_t> &allLineups,
                 128, 256, standardNormals_unaligned, aligned_alloc_size));
         static thread_local random_device rdev;
 
-        /*int currentLineupCount =
-            min(lineupChunkSize, (int)(allLineups.size()) - lineupChunkStart);*/
         const size_t n = (size_t)all_players_size * (size_t)SIMULATION_COUNT;
-        unsigned seed1 =
+        const unsigned seed1 =
             std::chrono::system_clock::now().time_since_epoch().count();
         alignas(256) LCG<__m256> lcg(seed1, rdev(), rdev(), rdev(), rdev(),
                                      rdev(), rdev(), rdev());
 
-        normaldistf_boxmuller_avx(&standardNormals[0], n, lcg);
+        Simulator::normaldistf_boxmuller_avx(&standardNormals[0], n, lcg);
 
-        int indexBegin = lineupChunkStart;
-        int indexEnd = indexBegin + lineupChunkSize;
+        const int indexEnd = lineupChunkStart + lineupChunkSize;
 
         lineup_t *results = &allLineupCombinations[lineupChunkStart];
         int k = 0;
-        for (int i = indexBegin; i < indexEnd; i++) {
+        for (int i = lineupChunkStart; i < indexEnd; i++) {
           if (bestset.set.size() > 0)
             memcpy(results + k, &bestset.set[0],
                    bestset.set.size() * sizeof(lineup_t));
@@ -157,9 +152,9 @@ void padAllLineupsSize(vector<lineup_t> &allLineups) {
 
 void greedyLineupSelector() {
   const vector<Player> p = parsePlayers("players.csv");
-  vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
+  const vector<tuple<string, string, float>> corr = parseCorr("corr.csv");
 
-  vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
+  const vector<pair<string, float>> ownership = parseOwnership("ownership.csv");
 
   vector<uint8_t> corrPairs;
   vector<float> corrCoeffs;
@@ -183,7 +178,6 @@ void greedyLineupSelector() {
   unordered_map<string, uint8_t> playerIndices;
   array<int, 256> playerCounts{};
 
-  // vectorized projection and stddev data
   alignas(256) array<float, 128> projs{};
   alignas(256) array<float, 128> stdevs{};
   for (const auto &x : p) {
@@ -200,120 +194,101 @@ void greedyLineupSelector() {
     }
   }
 
-  // unsigned seed1 =
-  // std::chrono::system_clock::now().time_since_epoch().count();
-  const auto start = chrono::steady_clock::now();
-
   vector<lineup_t> allLineups = parseLineups("output.csv", playerIndices);
 
   bitset<128> currentDisallowedSet = 0;
   vector<string> currentPlayersRemoved;
 
-  // choose lineup that maximizes objective
-  // iteratively add next lineup that maximizes objective.
-  lineup_set bestset;
-  bestset.set.reserve(TARGET_LINEUP_COUNT);
-  vector<int> bestsetIndex;
-  bestsetIndex.reserve(TARGET_LINEUP_COUNT);
+  {
+    ScopedElapsedTime totalSelectorTime;
+    // choose lineup that maximizes objective
+    // iteratively add next lineup that maximizes objective.
+    lineup_set bestset;
+    bestset.set.reserve(TARGET_LINEUP_COUNT);
 
-  // int z = 0;
-  for (int i = 0; i < TARGET_LINEUP_COUNT; i++) {
-    padAllLineupsSize(allLineups);
-    int lineupsIndexStart = 0;
-    int lineupsIndexEnd = allLineups.size();
+    for (int i = 0; i < TARGET_LINEUP_COUNT; i++) {
+      padAllLineupsSize(allLineups);
+      const int lineupsIndexStart = 0;
+      const int lineupsIndexEnd = allLineups.size();
 
-    bestsetIndex.push_back(Selector::selectorCore(
-        allLineups, corrPairs, corrCoeffs, projs, stdevs, lineupsIndexStart,
-        lineupsIndexEnd, // request data
-        bestset          // request data
-        ));
+      {
+        ScopedElapsedTime selectorTime;
+        Selector::selectorCore(allLineups, corrPairs, corrCoeffs, projs, stdevs,
+                               lineupsIndexStart, lineupsIndexEnd, bestset);
+        cout << "Lineups: " << (i + 1) << " EV: " << bestset.ev << endl;
+      }
 
-    const auto end = chrono::steady_clock::now();
-    const auto diff = end - start;
-    const double msTime = chrono::duration<double, milli>(diff).count();
-    cout << "Lineups: " << (i + 1) << " EV: " << bestset.ev
-         << " elapsed time: " << msTime << endl;
+      for (const auto &x : bestset.set[bestset.set.size() - 1]) {
+        cout << p[x].name;
+        cout << ",";
+      }
+      cout << endl;
+      cout << endl;
 
-    for (const auto &x : bestset.set[bestset.set.size() - 1]) {
-      cout << p[x].name;
-      cout << ",";
-    }
-    cout << endl;
-    cout << endl;
+      // rather than "enforced ownership" we should just have ownership caps
+      // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen,
+      // and work with new player set
+      for (const auto x : bestset.set[bestset.set.size() - 1]) {
+        playerCounts[x]++;
+      }
 
-    // rather than "enforced ownership" we should just have ownership caps
-    // eg. DJ @ 60%, after player exceeds threshold, we can rerun optimizen, and
-    // work with new player set
-    for (const auto x : bestset.set[bestset.set.size() - 1]) {
-      playerCounts[x]++;
-    }
+      if ((i > 1) && (i % 2 == 0) && ((i + 1) < TARGET_LINEUP_COUNT)) {
+        bitset<128> disallowedSet = 0;
+        vector<string> playersToRemove =
+            enforceOwnershipLimits(p, playerCounts, ownershipLimits,
+                                   bestset.set.size(), disallowedSet);
 
-    if ((i > 1) && (i % 2 == 0) && ((i + 1) < TARGET_LINEUP_COUNT)) {
-      bitset<128> disallowedSet = 0;
-      vector<string> playersToRemove = enforceOwnershipLimits(
-          p, playerCounts, ownershipLimits, bestset.set.size(), disallowedSet);
-
-      if (disallowedSet != currentDisallowedSet) {
-        cout << "Removing players: ";
-        for (auto &s : playersToRemove) {
-          cout << s << ",";
-        }
-        cout << endl;
-
-        currentPlayersRemoved = playersToRemove;
-        currentDisallowedSet = disallowedSet;
-        double msTime = 0;
-
-        {
-          Optimizer o;
-          vector<OptimizerLineup> lineups = o.generateLineupN(
-              p, playersToRemove, OptimizerLineup(), 0, msTime);
-          // faster to parse vector<Players2> to allLineups
-          allLineups.clear();
-          for (auto &lineup : lineups) {
-            int count = 0;
-            lineup_t currentLineup;
-            BitsetIter bitset(lineup.set);
-            while (true) {
-              int i = bitset.next();
-              currentLineup[count] = ((uint8_t)i);
-              if (!bitset.hasNext())
-                break;
-              count++;
-            }
-            allLineups.push_back(currentLineup);
+        if (disallowedSet != currentDisallowedSet) {
+          cout << "Removing players: ";
+          for (auto &s : playersToRemove) {
+            cout << s << ",";
           }
+          cout << endl;
 
-          cout << "Done optimizer. inclusive time: " << msTime << endl;
+          currentPlayersRemoved = playersToRemove;
+          currentDisallowedSet = disallowedSet;
+          {
+            ScopedElapsedTime optimizerTime;
+            Optimizer o;
+            vector<OptimizerLineup> lineups =
+                o.generateLineupN(p, playersToRemove, OptimizerLineup(), 0);
+            // faster to parse vector<Players2> to allLineups
+            allLineups.clear();
+            for (auto &lineup : lineups) {
+              int count = 0;
+              lineup_t currentLineup;
+              BitsetIter bitset(lineup.set);
+              while (true) {
+                int i = bitset.next();
+                currentLineup[count] = ((uint8_t)i);
+                if (!bitset.hasNext()) break;
+                count++;
+              }
+              allLineups.push_back(currentLineup);
+            }
 
-          auto end = chrono::steady_clock::now();
-          auto diff = end - start;
-          double totalTime = chrono::duration<double, milli>(diff).count();
-          cout << "Total elapsed time: " << totalTime << endl;
+            cout << "Done optimizer.";
+          }
         }
       }
     }
-  }
 
-  cout << endl;
+    cout << endl;
 
-  auto end = chrono::steady_clock::now();
-  auto diff = end - start;
-  double msTime = chrono::duration<double, milli>(diff).count();
-
-  ofstream myfile;
-  myfile.open("outputset.csv");
-  // output bestset
-  myfile << msTime << "ms" << endl;
-  myfile << bestset.ev;
-  myfile << endl;
-  for (auto &lineup : bestset.set) {
-    for (auto &x : lineup) {
-      myfile << p[x].name;
-      myfile << ",";
-    }
+    ofstream myfile;
+    myfile.open("outputset.csv");
+    // output bestset
+    myfile << totalSelectorTime.getElapsedTime() << "ms" << endl;
+    myfile << bestset.ev;
     myfile << endl;
-  }
+    for (auto &lineup : bestset.set) {
+      for (auto &x : lineup) {
+        myfile << p[x].name;
+        myfile << ",";
+      }
+      myfile << endl;
+    }
 
-  myfile.close();
+    myfile.close();
+  }
 }
