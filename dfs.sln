@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
 VisualStudioVersion = 12.0.30723.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "progproblems", "progproblems\progproblems.vcxproj", "{FCC129F4-0BC7-458E-94E1-AA7DBE713671}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "src", "src\progproblems.vcxproj", "{FCC129F4-0BC7-458E-94E1-AA7DBE713671}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
