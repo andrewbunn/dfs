@@ -32,9 +32,9 @@ std::vector<std::string> parseRanks(std::string filename);
 void parseHistoricalProjFiles();
 std::unordered_map<std::string, float> parseProsStats();
 std::unordered_map<std::string, float> parseYahooStats();
-void saveLineupList(std::vector<Player> &p,
-                    std::vector<OptimizerLineup> &lineups, std::string fileout,
-                    double msTime);
+void saveLineupList(const std::vector<Player> &p,
+                    const std::vector<OptimizerLineup> &lineups,
+                    const std::string fileout, const double msTime);
 float mixPlayerProjections(Player &p, float numberfire, float fpros,
                            float yahoo);
 void removeDominatedPlayersProjFile();

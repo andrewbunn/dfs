@@ -7,15 +7,18 @@
 #include <immintrin.h>
 
 using namespace std;
+// searches pruned based on this threshold. this is intentionally accessed
+// non-atomically.
 static float _g_min_Players = 0.f;
+// each thread has a pre allocated vector for each depth so we don't have cross
+// thread malloc contention.
 thread_local array<vector<OptimizerLineup>, NumLineupSlots> _depth_arrs{};
 
 void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
-  vector<Player> p = parsePlayers(filein);
-  vector<string> startingPlayers = parseNames(lineupstart);
+  const vector<Player> p = parsePlayers(filein);
+  const vector<string> startingPlayers = parseNames(lineupstart);
 
   OptimizerLineup startingLineup;
-  // if we can't add player, go to next round
   int budgetUsed = 0;
   for (auto &pl : startingPlayers) {
     auto it = find_if(p.begin(), p.end(),
@@ -26,8 +29,6 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
         budgetUsed += it->cost;
       }
     }
-
-    // output which set we're processing
     cout << pl << ",";
   }
 
@@ -40,53 +41,6 @@ void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
     auto msTime = optimizerTime.getElapsedTime();
     saveLineupList(p, lineups, fileout, msTime);
   }
-}
-
-bool operator==(const OptimizerLineup &first, const OptimizerLineup &other) {
-  return (first.set == other.set);
-}
-
-bool operator!=(const OptimizerLineup &first, const OptimizerLineup &other) {
-  return (first.set != other.set);
-}
-
-bool operator<(const OptimizerLineup &lhs, const OptimizerLineup &rhs) {
-  return lhs.value > rhs.value;
-}
-
-bool operator==(const std::array<uint64_t, 2> &first,
-                const std::array<uint64_t, 2> &other) {
-  return (first[0] == other[0]) && (first[1] == other[1]);
-}
-
-bool operator<(const lineup_set &lhs, const lineup_set &rhs) {
-  // backwards so highest value is "lowest" (best ranked lineup)
-  if (lhs.ev != rhs.ev) {
-    return lhs.ev > rhs.ev;
-  }
-  return lhs.stdev < rhs.stdev;
-}
-
-__attribute__((noinline)) bool Optimizer::knapsack_helperSkipPosition(
-    const int budget, const int pos, const OptimizerLineup oldLineup,
-    const vector<vector<Player>> &players, const int rbStartPos,
-    const int wrStartPos, const int teStartPos,
-    bitset<NumLineupSlots> skipPositionSet) {
-  if (skipPositionSet.test(pos)) {
-    skipPositionSet.set(pos, false);
-
-    if (pos >= 8) {
-      _depth_arrs[8].push_back(oldLineup);
-      return true;
-    }
-    knapsackPositionsN3(budget, pos + 1, oldLineup, players, rbStartPos,
-                        wrStartPos, teStartPos, skipPositionSet);
-
-    copy(_depth_arrs[pos + 1].begin(), _depth_arrs[pos + 1].end(),
-         _depth_arrs[pos].begin());
-    return true;
-  }
-  return false;
 }
 
 void Optimizer::knapsackPositionsN3(const int budget, const int pos,
@@ -167,7 +121,7 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
             }
           };
           if (originalLen >= LINEUPCOUNT) {
-            // g_min not protected, but we don't care
+            // g_min is intentionally not atomic
             _g_min_Players =
                 std::max<float>(bestLineups.back().value, _g_min_Players);
             filter(_g_min_Players);
@@ -235,8 +189,6 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
     OptimizerLineup currentLineup = oldLineup;
     if (p.cost <= budget) {
       if (currentLineup.tryAddPlayer(false, p.pos, p.proj, p.index)) {
-        /* 2 or 3? perf seems similar but 3 might be better with removed
-         * players? */
         if (pos >= 2) {
           knapsackPositionsN3(budget - p.cost, pos + 1, currentLineup, players,
                               isRB ? (&p - &players[pos][0]) + 1 : rbStartPos,
@@ -374,4 +326,49 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
       knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0,
                          0, 0, skipPositionsSet);
   return output;
+}
+
+__attribute__((noinline)) bool Optimizer::knapsack_helperSkipPosition(
+    const int budget, const int pos, const OptimizerLineup oldLineup,
+    const vector<vector<Player>> &players, const int rbStartPos,
+    const int wrStartPos, const int teStartPos,
+    bitset<NumLineupSlots> skipPositionSet) {
+  if (skipPositionSet.test(pos)) {
+    skipPositionSet.set(pos, false);
+    if (pos >= 8) {
+      _depth_arrs[8].push_back(oldLineup);
+      return true;
+    }
+    knapsackPositionsN3(budget, pos + 1, oldLineup, players, rbStartPos,
+                        wrStartPos, teStartPos, skipPositionSet);
+    copy(_depth_arrs[pos + 1].begin(), _depth_arrs[pos + 1].end(),
+         _depth_arrs[pos].begin());
+    return true;
+  }
+  return false;
+}
+
+bool operator==(const OptimizerLineup &first, const OptimizerLineup &other) {
+  return (first.set == other.set);
+}
+
+bool operator!=(const OptimizerLineup &first, const OptimizerLineup &other) {
+  return (first.set != other.set);
+}
+
+bool operator<(const OptimizerLineup &lhs, const OptimizerLineup &rhs) {
+  return lhs.value > rhs.value;
+}
+
+bool operator==(const std::array<uint64_t, 2> &first,
+                const std::array<uint64_t, 2> &other) {
+  return (first[0] == other[0]) && (first[1] == other[1]);
+}
+
+bool operator<(const lineup_set &lhs, const lineup_set &rhs) {
+  // backwards so highest value is "lowest" (best ranked lineup)
+  if (lhs.ev != rhs.ev) {
+    return lhs.ev > rhs.ev;
+  }
+  return lhs.stdev < rhs.stdev;
 }

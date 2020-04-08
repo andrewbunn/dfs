@@ -743,8 +743,9 @@ unordered_map<string, float> parseYahooStats() {
   return results;
 }
 
-void saveLineupList(vector<Player> &p, vector<OptimizerLineup> &lineups,
-                    string fileout, double msTime) {
+void saveLineupList(const vector<Player> &p,
+                    const vector<OptimizerLineup> &lineups,
+                    const string fileout, const double msTime) {
   ofstream myfile;
   myfile.open(fileout);
   myfile << msTime << " ms" << endl;
