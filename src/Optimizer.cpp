@@ -74,11 +74,11 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
     startPos = 0;
   }
 
-  vector<OptimizerLineup> &bestLineups = _depth_arrs[pos];
+  auto &bestLineups = _depth_arrs[pos];
 
-  const vector<Player> *playersArray = &players[pos];
+  const auto *playersArray = &players[pos];
   if (OptimizerLineup::isFlexPos(pos)) {
-    const int index = OptimizerLineup::getFlexTransposeIndex(
+    const auto index = OptimizerLineup::getFlexTransposeIndex(
         rbStartPos, wrStartPos, teStartPos);
     auto it = _filteredFlex.find(index);
     if (it != _filteredFlex.end()) {
@@ -92,8 +92,8 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
   }
 
   for (int i = startPos; i < playersArray->size(); i++) {
-    const Player &p = (*playersArray)[i];
-    OptimizerLineup currentLineup = oldLineup;
+    const auto &p = (*playersArray)[i];
+    auto currentLineup = oldLineup;
     if (p.cost <= budget) {
       if (currentLineup.tryAddPlayer(OptimizerLineup::isFlexPos(pos), p.pos,
                                      p.proj, p.index)) {
@@ -101,13 +101,13 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
           // this only stays sorted if defenses are sorted decreasing order
           bestLineups.push_back(currentLineup);
         } else {
-          const int originalLen = bestLineups.size();
+          const auto originalLen = bestLineups.size();
           knapsackPositionsN3(budget - p.cost, pos + 1, currentLineup, players,
                               isRB ? i + 1 : rbStartPos,
                               isWR ? i + 1 : wrStartPos,
                               isTE ? i + 1 : teStartPos, skipPositionSet);
 
-          vector<OptimizerLineup> &lineups = _depth_arrs[pos + 1];
+          auto &lineups = _depth_arrs[pos + 1];
 
           const auto filter = [&](const float min) {
             for (const auto &l : lineups) {
@@ -125,7 +125,7 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
             if (lineups.size() == 0)
               continue;
 
-            const float min = _g_min_Players;
+            const auto min = _g_min_Players;
             if (min < lineups.back().value) {
               bestLineups.insert(bestLineups.end(), lineups.begin(),
                                  lineups.end());
@@ -189,8 +189,8 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
     startPos = 0;
   }
 
-  auto loop = [&](const Player &p) {
-    OptimizerLineup currentLineup = oldLineup;
+  auto loop = [&](const auto &p) {
+    auto currentLineup = oldLineup;
     if (p.cost <= budget) {
       if (currentLineup.tryAddPlayer(false, p.pos, p.proj, p.index)) {
         if (pos >= 2) {
@@ -216,16 +216,16 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
   transform(execution::par_unseq, begin(players[pos]) + startPos,
             end(players[pos]), begin(lineupResults), loop);
 
-  vector<OptimizerLineup> &merged = _depth_arrs[pos];
+  auto &merged = _depth_arrs[pos];
   merged.clear();
   for (const auto &lineup : lineupResults) {
-    const int originalLen = merged.size();
+    const auto originalLen = merged.size();
     if (originalLen >= LINEUPCOUNT) {
       // g_min not protected, but we don't care
       _g_min_Players = std::max<float>(merged.back().value, _g_min_Players);
     }
 
-    const float min = _g_min_Players;
+    const auto min = _g_min_Players;
     for (const auto &l : lineup) {
       if (l.value > min) {
         merged.push_back(l);
@@ -305,7 +305,7 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
   for (int i = 0; i <= playersByPos[1].size(); i++) {
     for (int j = 0; j <= playersByPos[3].size(); j++) {
       for (int k = 0; k <= playersByPos[6].size(); k++) {
-        const int index = OptimizerLineup::getFlexTransposeIndex(i, j, k);
+        const auto index = OptimizerLineup::getFlexTransposeIndex(i, j, k);
         vector<Player> flexPlayers;
         // add rbs from rb start pos i
         for (int z = i; z < playersByPos[1].size(); z++) {
@@ -324,12 +324,11 @@ vector<OptimizerLineup> Optimizer::generateLineupN(
     }
   }
 
-  bitset<NumLineupSlots> skipPositionsSet = getSkipPositionsSet(currentPlayers);
+  auto skipPositionsSet = getSkipPositionsSet(currentPlayers);
 
   _g_min_Players = 0.f;
-  vector<OptimizerLineup> output =
-      knapsackPositionsN(100 - budgetUsed, 0, currentPlayers, playersByPos, 0,
-                         0, 0, skipPositionsSet);
+  auto output = knapsackPositionsN(100 - budgetUsed, 0, currentPlayers,
+                                   playersByPos, 0, 0, 0, skipPositionsSet);
   return output;
 }
 
