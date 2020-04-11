@@ -215,14 +215,14 @@ void greedyLineupSelector() {
         ScopedElapsedTime selectorTime;
         Selector::selectorCore(allLineups, corrPairs, corrCoeffs, projs, stdevs,
                                lineupsIndexStart, lineupsIndexEnd, bestset);
-        cout << "Lineups: " << (i + 1) << " EV: " << bestset.ev << endl;
+        cout << "Lineups: " << (i + 1) << " EV: " << bestset.ev << '\n';
       }
 
       for (const auto &x : bestset.set[bestset.set.size() - 1]) {
         cout << p[x].name;
         cout << ",";
       }
-      cout << endl;
+      cout << '\n';
       cout << endl;
 
       // reduce correlation between lineups by finding optimized lineups without
@@ -251,6 +251,7 @@ void greedyLineupSelector() {
             Optimizer o;
             vector<OptimizerLineup> lineups =
                 o.generateLineupN(p, playersToRemove, OptimizerLineup(), 0);
+
             allLineups.clear();
             for (auto &lineup : lineups) {
               int count = 0;
@@ -277,17 +278,17 @@ void greedyLineupSelector() {
     ofstream myfile;
     myfile.open("outputset.csv");
     // output bestset
-    myfile << totalSelectorTime.getElapsedTime() << "ms" << endl;
+    myfile << totalSelectorTime.getElapsedTime() << "ms" << '\n';
     myfile << bestset.ev;
-    myfile << endl;
-    for (auto &lineup : bestset.set) {
+    myfile << '\n';
+    for (const auto &lineup : bestset.set) {
       for (auto &x : lineup) {
         myfile << p[x].name;
         myfile << ",";
       }
-      myfile << endl;
+      myfile << '\n';
     }
-
+    myfile << flush;
     myfile.close();
   }
 }

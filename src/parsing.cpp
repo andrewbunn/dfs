@@ -169,9 +169,9 @@ void writeLineupsData(string filename, vector<OptimizerLineup> &lineups) {
     myfile << lineup.value;
     myfile << ",";
     myfile << lineup.hasFlex;
-    myfile << endl;
+    myfile << '\n';
   }
-
+  myfile << flush;
   myfile.close();
 }
 
@@ -621,7 +621,7 @@ void parseHistoricalProjFiles() {
     names.open("dataset-index.csv");
 
     for (auto &i : dataTable) {
-      names << i.first << endl;
+      names << i.first << '\n';
       bool first = true;
       for (auto val : i.second) {
         if (!first) {
@@ -631,7 +631,7 @@ void parseHistoricalProjFiles() {
         }
         myfile << val;
       }
-      myfile << endl;
+      myfile << '\n';
     }
 
     names.close();
@@ -748,7 +748,7 @@ void saveLineupList(const vector<Player> &p,
                     const string fileout, const double msTime) {
   ofstream myfile;
   myfile.open(fileout);
-  myfile << msTime << " ms" << endl;
+  myfile << msTime << " ms" << '\n';
 
   for (auto lineup : lineups) {
     int totalcost = 0;
@@ -761,16 +761,17 @@ void saveLineupList(const vector<Player> &p,
         count++;
         myfile << p[i].name;
         totalcost += p[i].cost;
-        myfile << endl;
+        myfile << '\n';
       }
     }
 
     myfile << lineup.value;
-    myfile << endl;
+    myfile << '\n';
     myfile << totalcost;
-    myfile << endl;
+    myfile << '\n';
   }
 
+  myfile << flush;
   myfile.close();
 }
 
@@ -897,9 +898,10 @@ void removeDominatedPlayersProjFile() {
       myfile << get<4>(p);
       myfile << ",";
 
-      myfile << endl;
+      myfile << '\n';
     }
   }
+  myfile << flush;
   myfile.close();
 }
 
@@ -960,8 +962,9 @@ void removeDominatedPlayers(string filein, string fileout) {
       allPlayers << ",";
       allPlayers << static_cast<float>(p.stdDev);
       allPlayers << ",";
-      allPlayers << endl;
+      allPlayers << '\n';
     }
+    allPlayers << flush;
 
     // biggest issue is for rb/wr we dont account for how many we can use.
     for (int j = 0; j < positionPlayers.size(); j++) {
@@ -1006,9 +1009,10 @@ void removeDominatedPlayers(string filein, string fileout) {
       myfile << static_cast<float>(p.stdDev);
       myfile << ",";
 
-      myfile << endl;
+      myfile << '\n';
     }
   }
+  myfile << flush;
   allPlayers.close();
   myfile.close();
 }
@@ -1048,19 +1052,19 @@ void splitLineups(const string lineups) {
       myfile << x;
       myfile << ",";
     }
-    myfile << endl;
+    myfile << '\n';
   }
-  myfile << endl;
-  myfile << endl;
+  myfile << '\n';
+  myfile << '\n';
 
   for (auto &lineup : setB) {
     for (auto &x : lineup) {
       myfile << x;
       myfile << ",";
     }
-    myfile << endl;
+    myfile << '\n';
   }
-
+  myfile << flush;
   myfile.close();
 }
 
@@ -1093,7 +1097,7 @@ void evaluateScore(string filename) {
         myfile << ",";
       }
       myfile << scores[i++];
-      myfile << endl;
+      myfile << '\n';
     }
     myfile << endl;
 

@@ -12,5 +12,5 @@ double ScopedElapsedTime::getElapsedTime() const {
 }
 
 ScopedElapsedTime::~ScopedElapsedTime() {
-  std::cout << "Elapsed time: " << getElapsedTime() << std::endl;
+  std::cout << "Elapsed time: " << getElapsedTime() << '\n';
 }

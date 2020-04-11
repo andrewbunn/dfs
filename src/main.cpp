@@ -20,12 +20,12 @@ void parseBuildConstants() {
                           [](auto &pl) { return pl.pos == Position::def; });
   const float firstDefenseProj = firstDef->proj + .05f;
 
-  cout << "Updating players size: " << allPlayersSizeRounded << endl;
+  cout << "Updating players size: " << allPlayersSizeRounded << '\n';
   ofstream myfile;
   myfile.open("ParsedConstants.h");
-  myfile << "#pragma once" << endl;
+  myfile << "#pragma once\n";
   myfile << "constexpr size_t all_players_size = " << allPlayersSizeRounded
-         << ";" << endl;
+         << ";\n";
   myfile << "constexpr float last_highest_delta = " << firstDefenseProj << ";"
          << endl;
   myfile.close();
