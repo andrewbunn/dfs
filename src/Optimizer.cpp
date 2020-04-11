@@ -10,9 +10,6 @@ using namespace std;
 // searches pruned based on this threshold. this is intentionally accessed
 // non-atomically.
 static float _g_min_Players = 0.f;
-// each thread has a pre allocated vector for each depth so we don't have cross
-// thread malloc contention.
-thread_local array<vector<OptimizerLineup>, NumLineupSlots> _depth_arrs{};
 
 void runPlayerOptimizerN(string filein, string fileout, string lineupstart) {
   const vector<Player> p = parsePlayers(filein);
@@ -49,7 +46,6 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
                                     const int rbStartPos, const int wrStartPos,
                                     const int teStartPos,
                                     bitset<NumLineupSlots> skipPositionSet) {
-  _depth_arrs[pos].reserve(LINEUPCOUNT * 2);
   _depth_arrs[pos].clear();
 
   if (unlikely(skipPositionSet.any())) {
@@ -148,13 +144,21 @@ void Optimizer::knapsackPositionsN3(const int budget, const int pos,
     }
   }
 }
+thread_local array<vector<OptimizerLineup>, NumLineupSlots>
+    Optimizer::_depth_arrs = {};
+
+void Optimizer::initializeThreadLocalData() {
+  for (int i = 0; i < NumLineupSlots; ++i) {
+    _depth_arrs[i].reserve(2 * LINEUPCOUNT);
+  }
+}
 
 vector<OptimizerLineup> Optimizer::knapsackPositionsN(
     const int budget, const int pos, const OptimizerLineup oldLineup,
     const vector<vector<Player>> &players, const int rbStartPos,
     const int wrStartPos, const int teStartPos,
     bitset<NumLineupSlots> skipPositionSet) {
-  _depth_arrs[pos].reserve(LINEUPCOUNT * 2);
+  initializeThreadLocalData();
   _depth_arrs[pos].clear();
 
   if (unlikely(skipPositionSet.any())) {
@@ -190,6 +194,7 @@ vector<OptimizerLineup> Optimizer::knapsackPositionsN(
     if (p.cost <= budget) {
       if (currentLineup.tryAddPlayer(false, p.pos, p.proj, p.index)) {
         if (pos >= 2) {
+          initializeThreadLocalData();
           knapsackPositionsN3(budget - p.cost, pos + 1, currentLineup, players,
                               isRB ? (&p - &players[pos][0]) + 1 : rbStartPos,
                               isWR ? (&p - &players[pos][0]) + 1 : wrStartPos,

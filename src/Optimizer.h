@@ -200,6 +200,11 @@ private:
       const std::vector<std::vector<Player>> &players, const int rbStartPos,
       const int wrStartPos, const int teStartPos,
       std::bitset<NumLineupSlots> skipPositionSet);
+  void initializeThreadLocalData();
 
   std::unordered_map<int, const std::vector<Player>, IntHasher> _filteredFlex;
+  // each thread has a pre allocated vector for each depth so we don't have
+  // cross thread malloc contention.
+  static thread_local std::array<std::vector<OptimizerLineup>, NumLineupSlots>
+      _depth_arrs;
 };
